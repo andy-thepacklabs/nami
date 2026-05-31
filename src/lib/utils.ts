@@ -31,16 +31,16 @@ export const PRIORITY_LABELS: Record<DiscrepancyPriority, string> = {
 }
 
 export const STATUS_COLORS: Record<DiscrepancyStatus, string> = {
-  open:      'text-amber-400 bg-amber-500/10 border-amber-500/20',
-  in_review: 'text-sky-400 bg-sky-500/10 border-sky-500/20',
+  open:      'text-orange-300 bg-orange-500/10 border-orange-500/20',
+  in_review: 'text-amber-300 bg-amber-500/10 border-amber-500/20',
   escalated: 'text-red-400 bg-red-500/10 border-red-500/20',
   resolved:  'text-emerald-400 bg-emerald-500/10 border-emerald-500/20',
 }
 
 export const PRIORITY_COLORS: Record<DiscrepancyPriority, string> = {
-  low:      'text-slate-400 bg-slate-500/10 border-slate-500/20',
-  medium:   'text-sky-400 bg-sky-500/10 border-sky-500/20',
-  high:     'text-orange-400 bg-orange-500/10 border-orange-500/20',
+  low:      'text-orange-300/50 bg-orange-500/5 border-orange-500/10',
+  medium:   'text-orange-300 bg-orange-500/10 border-orange-500/20',
+  high:     'text-orange-400 bg-orange-500/15 border-orange-500/30',
   critical: 'text-red-400 bg-red-500/10 border-red-500/20',
 }
 
@@ -54,7 +54,8 @@ export function fmtDelta(created_at: string) {
   return `${Math.floor(h / 24)}d ago`
 }
 
-// Categories to exclude from inventory tracking
+export const FACILITY_PREFIX = 'SFS-'
+
 export const EXCLUDED_CATEGORIES = [
   'NON-INVENTORY',
   'BUNDLES',
@@ -63,4 +64,12 @@ export const EXCLUDED_CATEGORIES = [
   'PROMOTIONAL',
   'SAMPLES',
   'MARKETING',
+  'RAW MATERIALS',
+  'RAW PACKAGING',
+  'RAW LABELS',
+  'RAW OIL',
+  'RAW MYLARS',
+  'RAW CANDY',
+  'WIP',
+  'FORMULATIONS',
 ]

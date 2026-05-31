@@ -122,6 +122,29 @@ export async function fetchOrders(): Promise<FinaleOrder[]> {
   return columnarToRows<FinaleOrder>(data)
 }
 
+export interface FinaleWorkEffort {
+  workEffortId: string
+  workEffortUrl: string
+  workEffortTypeId: string
+  statusId: string
+  facilityUrl: string
+  productIdToProduce: string
+  productUrlToProduce: string
+  quantityToProduce: number
+  completeDate: string | null
+  startDate: string | null
+  description: string | null
+  lotIdToProduce: string | null
+  workEffortConsumeList: { facilityUrl: string; productId: string; productUrl: string; quantity: number }[] | null
+  workEffortProduceList: { facilityUrl: string; productId: string; productUrl: string; quantity: number }[] | null
+  [key: string]: unknown
+}
+
+export async function fetchWorkEfforts(): Promise<FinaleWorkEffort[]> {
+  const data = await finaleGet<Record<string, unknown[]>>('workeffort')
+  return columnarToRows<FinaleWorkEffort>(data)
+}
+
 export interface FinaleTransfer {
   inventoryTransferUrl: string
   productId: string

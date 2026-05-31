@@ -1,11 +1,14 @@
 import { getDb } from './db'
-import { EXCLUDED_CATEGORIES } from './utils'
+import { EXCLUDED_CATEGORIES, FACILITY_PREFIX } from './utils'
 
-const CATEGORY_FILTER = `AND NOT EXISTS (
+const PRODUCT_FILTER = `AND NOT EXISTS (
   SELECT 1 FROM finale_products fp
   WHERE fp.product_id = cs.product_id
-  AND fp.category IN (${EXCLUDED_CATEGORIES.map(c => `'${c}'`).join(',')})
+  AND (fp.category IN (${EXCLUDED_CATEGORIES.map(c => `'${c}'`).join(',')})
+       OR fp.status = 'PRODUCT_INACTIVE')
 )`
+
+const FACILITY_FILTER = `AND (cs.facility_name LIKE '${FACILITY_PREFIX}%')`
 
 export interface DetectionResult {
   rule: string
@@ -42,12 +45,18 @@ function detectNegativeStock(): DetectionResult {
   let created = 0
   let skipped = 0
 
-  // Get top negative stock entries by magnitude, limited to avoid flood
+  // Get negative stock entries, excluding those explained by build consumption
   const rows = db.prepare(`
     SELECT cs.product_id, cs.product_name, cs.facility_url, cs.facility_name, cs.net_qty
     FROM computed_stock cs
     WHERE cs.net_qty < -10
-    ${CATEGORY_FILTER}
+    ${PRODUCT_FILTER}
+    ${FACILITY_FILTER}
+    AND NOT EXISTS (
+      SELECT 1 FROM finale_build_lines bl
+      WHERE bl.product_id = cs.product_id
+        AND bl.line_type = 'consume'
+    )
     ORDER BY cs.net_qty ASC
     LIMIT 50
   `).all() as {
@@ -112,7 +121,8 @@ function detectGhostStock(): DetectionResult {
     FROM computed_stock cs
     JOIN finale_facilities f ON f.facility_url = cs.facility_url
     WHERE f.status = 'FACILITY_INACTIVE' AND cs.net_qty > 10
-    ${CATEGORY_FILTER}
+    ${PRODUCT_FILTER}
+    ${FACILITY_FILTER}
     ORDER BY cs.net_qty DESC
     LIMIT 50
   `).all() as {
@@ -178,8 +188,14 @@ function detectDuplicateTransfers(): DetectionResult {
     AND NOT EXISTS (
       SELECT 1 FROM finale_products fp
       WHERE fp.product_id = t.product_id
-      AND fp.category IN (${EXCLUDED_CATEGORIES.map(c => `'${c}'`).join(',')})
+      AND (fp.category IN (${EXCLUDED_CATEGORIES.map(c => `'${c}'`).join(',')})
+           OR fp.status = 'PRODUCT_INACTIVE')
     )
+    AND EXISTS (
+      SELECT 1 FROM finale_facilities ff
+      WHERE ff.facility_url = t.facility_to AND ff.facility_name LIKE '${FACILITY_PREFIX}%'
+    )
+    AND t.send_date >= '2026-01-01'
     GROUP BY t.product_id, t.quantity, t.facility_from, t.facility_to, t.send_date
     HAVING cnt > 2
     ORDER BY (t.quantity * cnt) DESC

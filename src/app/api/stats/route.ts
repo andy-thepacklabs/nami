@@ -26,6 +26,7 @@ export async function GET() {
     SELECT d.id, d.order_number, d.sku, d.discrepancy_type, d.status, d.priority,
            d.bin_location, d.created_at
     FROM discrepancies d
+    WHERE d.status != 'resolved'
     ORDER BY d.created_at DESC LIMIT 5
   `).all()
 

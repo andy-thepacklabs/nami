@@ -19,7 +19,9 @@ export async function GET(req: NextRequest) {
 
   const bin = searchParams.get('bin')
 
-  if (status && status !== 'all')     { conditions.push('d.status = ?');   params.push(status) }
+  if (status === 'resolved')          { conditions.push("d.status = 'resolved'") }
+  else if (status && status !== 'all') { conditions.push('d.status = ?');   params.push(status) }
+  else if (!status || status === 'all') { conditions.push("d.status != 'resolved'") }
   if (priority && priority !== 'all') { conditions.push('d.priority = ?'); params.push(priority) }
   if (bin)                            { conditions.push('d.bin_location = ?'); params.push(bin) }
   if (q) {

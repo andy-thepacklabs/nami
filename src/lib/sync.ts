@@ -1,10 +1,10 @@
 import { getDb } from './db'
 import {
-  fetchProducts, fetchFacilities, fetchShipments, fetchOrders, fetchTransfers,
-  type FinaleProduct, type FinaleFacility
+  fetchProducts, fetchFacilities, fetchShipments, fetchOrders, fetchTransfers, fetchWorkEfforts,
+  type FinaleProduct, type FinaleFacility, type FinaleWorkEffort
 } from './finale'
 import { runAllDetectionRules, type DetectionSummary } from './detection'
-import { EXCLUDED_CATEGORIES } from './utils'
+import { EXCLUDED_CATEGORIES, FACILITY_PREFIX } from './utils'
 
 export interface SyncResult {
   products: number
@@ -12,6 +12,7 @@ export interface SyncResult {
   shipments: number
   orders: number
   transfers: number
+  builds: number
   stockLevels: number
   detection: DetectionSummary | null
   errors: string[]
@@ -72,6 +73,32 @@ export async function runFullSync(): Promise<SyncResult> {
       raw_json      TEXT,
       synced_at     TEXT NOT NULL DEFAULT (datetime('now'))
     );
+
+    CREATE TABLE IF NOT EXISTS finale_builds (
+      work_effort_id  TEXT PRIMARY KEY,
+      work_effort_url TEXT NOT NULL,
+      status          TEXT,
+      facility_url    TEXT,
+      product_id      TEXT,
+      quantity         REAL,
+      complete_date   TEXT,
+      start_date      TEXT,
+      synced_at       TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS finale_build_lines (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      work_effort_id  TEXT NOT NULL,
+      line_type       TEXT NOT NULL,
+      product_id      TEXT NOT NULL,
+      facility_url    TEXT NOT NULL,
+      quantity        REAL NOT NULL,
+      synced_at       TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_fbl_weid ON finale_build_lines(work_effort_id);
+    CREATE INDEX IF NOT EXISTS idx_fbl_type ON finale_build_lines(line_type);
+    CREATE INDEX IF NOT EXISTS idx_fbl_product ON finale_build_lines(product_id);
 
     CREATE TABLE IF NOT EXISTS finale_transfers (
       transfer_url  TEXT PRIMARY KEY,
@@ -240,9 +267,8 @@ export async function runFullSync(): Promise<SyncResult> {
     errors.push(`Orders: ${(err as Error).message}`)
   }
 
-  // 5. Sync inventory transfers + compute stock
+  // 5. Sync inventory transfers
   let transferCount = 0
-  let stockLevelCount = 0
   try {
     const transfers = await fetchTransfers()
     db.exec(`DELETE FROM finale_transfers`)
@@ -261,8 +287,62 @@ export async function runFullSync(): Promise<SyncResult> {
       )
     }
     transferCount = transfers.length
+  } catch (err) {
+    errors.push(`Transfers: ${(err as Error).message}`)
+  }
 
-    // Compute net stock per product per facility from transfers
+  // 6. Sync builds (work efforts) — consume + produce lines
+  let buildCount = 0
+  try {
+    const builds = await fetchWorkEfforts()
+    db.exec(`DELETE FROM finale_builds`)
+    db.exec(`DELETE FROM finale_build_lines`)
+
+    const insBuild = db.prepare(`
+      INSERT OR REPLACE INTO finale_builds
+        (work_effort_id, work_effort_url, status, facility_url,
+         product_id, quantity, complete_date, start_date, synced_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+    `)
+    const insLine = db.prepare(`
+      INSERT INTO finale_build_lines
+        (work_effort_id, line_type, product_id, facility_url, quantity, synced_at)
+      VALUES (?, ?, ?, ?, ?, datetime('now'))
+    `)
+
+    for (const b of builds) {
+      if (b.statusId !== 'PRUN_COMPLETED') continue
+
+      insBuild.run(
+        String(b.workEffortId ?? ''), String(b.workEffortUrl ?? ''), String(b.statusId ?? ''),
+        b.facilityUrl ? String(b.facilityUrl) : null,
+        b.productIdToProduce ? String(b.productIdToProduce) : null,
+        Number(b.quantityToProduce ?? 0),
+        b.completeDate ? String(b.completeDate) : null,
+        b.startDate ? String(b.startDate) : null
+      )
+
+      if (Array.isArray(b.workEffortConsumeList)) {
+        for (const c of b.workEffortConsumeList) {
+          if (!c || !c.productId || !c.facilityUrl) continue
+          insLine.run(String(b.workEffortId), 'consume', String(c.productId), String(c.facilityUrl), Number(c.quantity ?? 0))
+        }
+      }
+      if (Array.isArray(b.workEffortProduceList)) {
+        for (const p of b.workEffortProduceList) {
+          if (!p || !p.productId || !p.facilityUrl) continue
+          insLine.run(String(b.workEffortId), 'produce', String(p.productId), String(p.facilityUrl), Number(p.quantity ?? 0))
+        }
+      }
+      buildCount++
+    }
+  } catch (err) {
+    errors.push(`Builds: ${(err as Error).message}`)
+  }
+
+  // 7. Compute net stock from transfers + builds
+  let stockLevelCount = 0
+  try {
     db.exec(`DELETE FROM computed_stock`)
     db.exec(`
       INSERT INTO computed_stock (product_id, facility_url, facility_name, product_name, net_qty, synced_at)
@@ -274,16 +354,39 @@ export async function runFullSync(): Promise<SyncResult> {
       FROM (
         SELECT product_id, facility_url, SUM(qty) AS net_qty
         FROM (
-          SELECT product_id, facility_to AS facility_url, quantity AS qty FROM finale_transfers
+          -- Transfers IN to SFS bins (from anywhere)
+          SELECT t.product_id, t.facility_to AS facility_url, t.quantity AS qty
+          FROM finale_transfers t
+          JOIN finale_facilities fto ON fto.facility_url = t.facility_to
+          WHERE fto.facility_name LIKE '${FACILITY_PREFIX}%'
           UNION ALL
-          SELECT product_id, facility_from AS facility_url, -quantity AS qty FROM finale_transfers
+          -- Transfers OUT from SFS bins (to anywhere)
+          SELECT t.product_id, t.facility_from AS facility_url, -t.quantity AS qty
+          FROM finale_transfers t
+          JOIN finale_facilities ffrom ON ffrom.facility_url = t.facility_from
+          WHERE ffrom.facility_name LIKE '${FACILITY_PREFIX}%'
+          UNION ALL
+          -- Builds: consumed materials at SFS facilities
+          SELECT bl.product_id, bl.facility_url, -bl.quantity AS qty
+          FROM finale_build_lines bl
+          JOIN finale_builds b ON b.work_effort_id = bl.work_effort_id
+          JOIN finale_facilities bf ON bf.facility_url = bl.facility_url
+          WHERE bl.line_type = 'consume' AND bf.facility_name LIKE '${FACILITY_PREFIX}%'
+          UNION ALL
+          -- Builds: produced goods at SFS facilities
+          SELECT bl.product_id, bl.facility_url, bl.quantity AS qty
+          FROM finale_build_lines bl
+          JOIN finale_builds b ON b.work_effort_id = bl.work_effort_id
+          JOIN finale_facilities bf ON bf.facility_url = bl.facility_url
+          WHERE bl.line_type = 'produce' AND bf.facility_name LIKE '${FACILITY_PREFIX}%'
         )
         GROUP BY product_id, facility_url
         HAVING SUM(qty) != 0
       ) s
       LEFT JOIN finale_facilities f ON f.facility_url = s.facility_url
       LEFT JOIN finale_products p ON p.product_id = s.product_id
-      WHERE p.category IS NULL OR p.category NOT IN (${EXCLUDED_CATEGORIES.map(c => `'${c}'`).join(',')})
+      WHERE (p.category IS NULL OR p.category NOT IN (${EXCLUDED_CATEGORIES.map(c => `'${c}'`).join(',')}))
+        AND (p.status IS NULL OR p.status != 'PRODUCT_INACTIVE')
     `)
     stockLevelCount = (db.prepare(`SELECT COUNT(*) as c FROM computed_stock`).get() as { c: number }).c
   } catch (err) {
@@ -314,6 +417,7 @@ export async function runFullSync(): Promise<SyncResult> {
     shipments: shipmentCount,
     orders: orderCount,
     transfers: transferCount,
+    builds: buildCount,
     stockLevels: stockLevelCount,
     detection,
     errors,

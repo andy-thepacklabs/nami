@@ -52,8 +52,8 @@ export default function NewDiscrepancyModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-      <div className="bg-[#0d1117] border border-[#1e2433] rounded-2xl w-full max-w-lg shadow-2xl">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-[#1e2433]">
+      <div className="bg-[#0d0a07] border border-orange-900/30 rounded-2xl w-full max-w-lg shadow-2xl">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-orange-900/30">
           <h2 className="font-bold text-white uppercase tracking-wide text-sm">Log New Discrepancy</h2>
           <button onClick={onClose} className="btn-ghost w-8 h-8 p-0 justify-center">
             <X className="w-4 h-4" />
@@ -119,7 +119,7 @@ export default function NewDiscrepancyModal({
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-1.5">
-      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.15em]">{label}</label>
+      <label className="text-[10px] font-bold text-orange-700 uppercase tracking-[0.15em]">{label}</label>
       {children}
     </div>
   )
