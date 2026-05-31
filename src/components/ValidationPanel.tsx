@@ -59,28 +59,28 @@ export default function ValidationPanel({ onClose, onDiscrepancyCreated }: {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-      <div className="bg-[#111111] border border-neutral-800 rounded-2xl w-full max-w-5xl max-h-[90vh] flex flex-col shadow-2xl">
+      <div className="bg-[#0d1117] border border-[#1e2433] rounded-2xl w-full max-w-5xl max-h-[90vh] flex flex-col shadow-2xl">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-neutral-800">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-[#1e2433]">
           <div className="flex items-center gap-3">
-            <ClipboardCheck className="w-5 h-5 text-lime-500" />
+            <ClipboardCheck className="w-5 h-5 text-orange-500" />
             <h2 className="font-bold text-white uppercase tracking-wide text-sm">Inventory Validation</h2>
           </div>
           <div className="flex items-center gap-2">
             {/* Tab switcher */}
             <button
               onClick={() => setView('bins')}
-              className={cn('btn-ghost text-xs', view === 'bins' && 'text-lime-400 bg-lime-500/10')}
+              className={cn('btn-ghost text-xs', view === 'bins' && 'text-orange-400 bg-orange-500/10')}
             >
               <MapPin className="w-3.5 h-3.5" /> Select Bin
             </button>
             <button
               onClick={() => setView('sessions')}
-              className={cn('btn-ghost text-xs', view === 'sessions' && 'text-lime-400 bg-lime-500/10')}
+              className={cn('btn-ghost text-xs', view === 'sessions' && 'text-orange-400 bg-orange-500/10')}
             >
               <FileText className="w-3.5 h-3.5" /> History
             </button>
-            <div className="w-px h-6 bg-neutral-800 mx-1" />
+            <div className="w-px h-6 bg-[#1a1f2e] mx-1" />
             <button onClick={onClose} className="btn-ghost w-8 h-8 p-0 justify-center">
               <X className="w-4 h-4" />
             </button>
@@ -157,8 +157,8 @@ function BinSelector({ onStartCount }: { onStartCount: (sessionId: number) => vo
   return (
     <div className="p-6 flex flex-col gap-5">
       {/* Counter name */}
-      <div className="card p-4 bg-neutral-900/50">
-        <label className="text-[10px] font-bold text-neutral-500 uppercase tracking-[0.2em] block mb-2">
+      <div className="card p-4 bg-[#111520]">
+        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em] block mb-2">
           Who is counting?
         </label>
         <input
@@ -171,7 +171,7 @@ function BinSelector({ onStartCount }: { onStartCount: (sessionId: number) => vo
 
       {/* Search bins */}
       <div className="relative max-w-md">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-500 pointer-events-none" />
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 pointer-events-none" />
         <input
           className="input w-full pl-9"
           placeholder="Search bins / locations..."
@@ -182,12 +182,12 @@ function BinSelector({ onStartCount }: { onStartCount: (sessionId: number) => vo
 
       {/* Bin grid */}
       {loading ? (
-        <div className="text-center text-neutral-500 text-sm py-12">Loading bins...</div>
+        <div className="text-center text-slate-500 text-sm py-12">Loading bins...</div>
       ) : bins.length === 0 ? (
         <div className="card p-8 text-center">
-          <MapPin className="w-8 h-8 text-neutral-700 mx-auto mb-3" />
-          <p className="text-sm text-neutral-400">No bins with stock found.</p>
-          <p className="text-xs text-neutral-600 mt-1">Run a Finale sync to load inventory data.</p>
+          <MapPin className="w-8 h-8 text-slate-700 mx-auto mb-3" />
+          <p className="text-sm text-slate-400">No bins with stock found.</p>
+          <p className="text-xs text-slate-600 mt-1">Run a Finale sync to load inventory data.</p>
         </div>
       ) : (
         <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
@@ -196,20 +196,20 @@ function BinSelector({ onStartCount }: { onStartCount: (sessionId: number) => vo
               key={bin.facility_url}
               onClick={() => startSession(bin)}
               disabled={!counterName.trim() || starting === bin.facility_url}
-              className="card p-4 text-left hover:border-lime-500/30 hover:bg-neutral-800/50 transition-all group disabled:opacity-50"
+              className="card p-4 text-left hover:border-orange-500/30 hover:bg-[#1a1f2e] transition-all group disabled:opacity-50"
             >
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
-                  <MapPin className="w-4 h-4 text-lime-500" />
+                  <MapPin className="w-4 h-4 text-orange-500" />
                   <span className="font-mono text-sm font-bold text-white">{bin.facility_name}</span>
                 </div>
                 {starting === bin.facility_url ? (
-                  <RefreshCw className="w-4 h-4 text-lime-500 animate-spin" />
+                  <RefreshCw className="w-4 h-4 text-orange-500 animate-spin" />
                 ) : (
-                  <Play className="w-4 h-4 text-neutral-700 group-hover:text-lime-500 transition-colors" />
+                  <Play className="w-4 h-4 text-slate-700 group-hover:text-orange-500 transition-colors" />
                 )}
               </div>
-              <div className="flex items-center gap-4 text-xs text-neutral-500">
+              <div className="flex items-center gap-4 text-xs text-slate-500">
                 <span><Package className="w-3 h-3 inline mr-1" />{bin.product_count} product{bin.product_count !== 1 ? 's' : ''}</span>
                 <span>{Math.round(bin.total_qty)} total units</span>
               </div>
@@ -237,15 +237,15 @@ function SessionHistory({ onOpen }: { onOpen: (id: number) => void }) {
       .then(d => { setSessions(d.rows || []); setLoading(false) })
   }, [])
 
-  if (loading) return <div className="p-6 text-center text-neutral-500 text-sm">Loading...</div>
+  if (loading) return <div className="p-6 text-center text-slate-500 text-sm">Loading...</div>
 
   if (sessions.length === 0) {
     return (
       <div className="p-6">
         <div className="card p-8 text-center">
-          <ClipboardCheck className="w-8 h-8 text-neutral-700 mx-auto mb-3" />
-          <p className="text-sm text-neutral-400">No validation sessions yet.</p>
-          <p className="text-xs text-neutral-600 mt-1">Select a bin to start your first count.</p>
+          <ClipboardCheck className="w-8 h-8 text-slate-700 mx-auto mb-3" />
+          <p className="text-sm text-slate-400">No validation sessions yet.</p>
+          <p className="text-xs text-slate-600 mt-1">Select a bin to start your first count.</p>
         </div>
       </div>
     )
@@ -256,35 +256,35 @@ function SessionHistory({ onOpen }: { onOpen: (id: number) => void }) {
       <div className="card overflow-hidden">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-neutral-800 bg-neutral-900/50">
+            <tr className="border-b border-[#1e2433] bg-[#111520]">
               {['Bin', 'Counted By', 'Status', 'Progress', 'Variances', 'Started', ''].map(h => (
-                <th key={h} className="text-left text-[10px] font-bold text-neutral-500 px-4 py-3 uppercase tracking-[0.15em]">{h}</th>
+                <th key={h} className="text-left text-[10px] font-bold text-slate-500 px-4 py-3 uppercase tracking-[0.15em]">{h}</th>
               ))}
             </tr>
           </thead>
-          <tbody className="divide-y divide-neutral-800/50">
+          <tbody className="divide-y divide-slate-800/50">
             {sessions.map(s => (
               <tr
                 key={s.id}
                 onClick={() => onOpen(s.id)}
-                className="hover:bg-neutral-800/50 cursor-pointer transition-colors group"
+                className="hover:bg-[#1a1f2e] cursor-pointer transition-colors group"
               >
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-1.5">
-                    <MapPin className="w-3.5 h-3.5 text-lime-500" />
+                    <MapPin className="w-3.5 h-3.5 text-orange-500" />
                     <span className="font-mono text-xs font-bold text-white">{s.facility_name}</span>
                   </div>
                 </td>
-                <td className="px-4 py-3 text-xs text-neutral-300">{s.counted_by}</td>
+                <td className="px-4 py-3 text-xs text-slate-300">{s.counted_by}</td>
                 <td className="px-4 py-3">
                   <span className={cn('badge text-[10px]',
-                    s.status === 'completed' ? 'text-lime-400 bg-lime-500/10 border-lime-500/20' :
+                    s.status === 'completed' ? 'text-orange-400 bg-orange-500/10 border-orange-500/20' :
                     'text-amber-400 bg-amber-500/10 border-amber-500/20'
                   )}>
                     {s.status === 'completed' ? 'Complete' : 'In Progress'}
                   </span>
                 </td>
-                <td className="px-4 py-3 text-xs text-neutral-400 tabular-nums">
+                <td className="px-4 py-3 text-xs text-slate-400 tabular-nums">
                   {s.counted_items}/{s.total_items} items
                 </td>
                 <td className="px-4 py-3">
@@ -293,14 +293,14 @@ function SessionHistory({ onOpen }: { onOpen: (id: number) => void }) {
                       <AlertTriangle className="w-3 h-3" /> {s.variance_items}
                     </span>
                   ) : s.counted_items > 0 ? (
-                    <span className="text-xs text-lime-400">All match</span>
+                    <span className="text-xs text-orange-400">All match</span>
                   ) : (
-                    <span className="text-xs text-neutral-600">—</span>
+                    <span className="text-xs text-slate-600">—</span>
                   )}
                 </td>
-                <td className="px-4 py-3 text-xs text-neutral-500">{fmtDelta(s.started_at)}</td>
+                <td className="px-4 py-3 text-xs text-slate-500">{fmtDelta(s.started_at)}</td>
                 <td className="px-4 py-3">
-                  <ChevronRight className="w-4 h-4 text-neutral-700 group-hover:text-lime-500 transition-colors" />
+                  <ChevronRight className="w-4 h-4 text-slate-700 group-hover:text-orange-500 transition-colors" />
                 </td>
               </tr>
             ))}
@@ -354,7 +354,7 @@ function CountingView({ sessionId, onBack, onDiscrepancyCreated }: {
   }
 
   if (loading || !data) {
-    return <div className="p-6 text-center text-neutral-500 text-sm">Loading session...</div>
+    return <div className="p-6 text-center text-slate-500 text-sm">Loading session...</div>
   }
 
   const { session, counts, summary } = data
@@ -371,35 +371,35 @@ function CountingView({ sessionId, onBack, onDiscrepancyCreated }: {
   return (
     <div className="flex flex-col h-full">
       {/* Session header */}
-      <div className="px-6 py-4 border-b border-neutral-800 bg-neutral-900/30">
+      <div className="px-6 py-4 border-b border-[#1e2433] bg-[#111520]/30">
         <div className="flex items-center gap-3 mb-3">
           <button onClick={onBack} className="btn-ghost w-8 h-8 p-0 justify-center">
             <ChevronLeft className="w-4 h-4" />
           </button>
-          <MapPin className="w-5 h-5 text-lime-500" />
+          <MapPin className="w-5 h-5 text-orange-500" />
           <span className="font-mono text-lg font-black text-white">{session.facility_name}</span>
           <span className={cn('badge text-[10px]',
-            session.status === 'completed' ? 'text-lime-400 bg-lime-500/10 border-lime-500/20' :
+            session.status === 'completed' ? 'text-orange-400 bg-orange-500/10 border-orange-500/20' :
             'text-amber-400 bg-amber-500/10 border-amber-500/20'
           )}>
             {session.status === 'completed' ? 'Complete' : 'In Progress'}
           </span>
-          <span className="text-xs text-neutral-500 ml-auto">Counted by: <span className="text-white">{session.counted_by}</span></span>
+          <span className="text-xs text-slate-500 ml-auto">Counted by: <span className="text-white">{session.counted_by}</span></span>
         </div>
 
         {/* Progress bar + stats */}
         <div className="flex items-center gap-4">
-          <div className="flex-1 bg-neutral-800 rounded-full h-2">
+          <div className="flex-1 bg-[#1a1f2e] rounded-full h-2">
             <div
-              className={cn('h-2 rounded-full transition-all', pctComplete === 100 ? 'bg-lime-500' : 'bg-amber-500')}
+              className={cn('h-2 rounded-full transition-all', pctComplete === 100 ? 'bg-orange-500' : 'bg-amber-500')}
               style={{ width: `${pctComplete}%` }}
             />
           </div>
-          <span className="text-xs text-neutral-400 tabular-nums w-12">{pctComplete}%</span>
+          <span className="text-xs text-slate-400 tabular-nums w-12">{pctComplete}%</span>
 
           <div className="flex items-center gap-3 text-xs">
-            <StatPill icon={<Package className="w-3 h-3" />} label="Total" value={summary.total} color="text-neutral-400" />
-            <StatPill icon={<Check className="w-3 h-3" />} label="Matched" value={summary.matched} color="text-lime-400" />
+            <StatPill icon={<Package className="w-3 h-3" />} label="Total" value={summary.total} color="text-slate-400" />
+            <StatPill icon={<Check className="w-3 h-3" />} label="Matched" value={summary.matched} color="text-orange-400" />
             <StatPill icon={<AlertTriangle className="w-3 h-3" />} label="Variance" value={summary.variances} color="text-red-400" />
             <StatPill icon={<Minus className="w-3 h-3" />} label="Pending" value={summary.total - summary.counted} color="text-amber-400" />
           </div>
@@ -413,7 +413,7 @@ function CountingView({ sessionId, onBack, onDiscrepancyCreated }: {
       </div>
 
       {/* Filter tabs */}
-      <div className="flex border-b border-neutral-800 px-6">
+      <div className="flex border-b border-[#1e2433] px-6">
         {([
           { key: 'all',      label: `All (${counts.length})` },
           { key: 'pending',  label: `Pending (${counts.filter(c => c.status === 'pending').length})` },
@@ -426,8 +426,8 @@ function CountingView({ sessionId, onBack, onDiscrepancyCreated }: {
             className={cn(
               'px-4 py-3 text-xs font-semibold border-b-2 -mb-px transition-colors',
               filter === key
-                ? 'border-lime-500 text-lime-400'
-                : 'border-transparent text-neutral-500 hover:text-white'
+                ? 'border-orange-500 text-orange-400'
+                : 'border-transparent text-slate-500 hover:text-white'
             )}
           >
             {label}
@@ -438,7 +438,7 @@ function CountingView({ sessionId, onBack, onDiscrepancyCreated }: {
       {/* Count lines */}
       <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-2">
         {filtered.length === 0 && (
-          <div className="text-center text-neutral-500 text-sm py-12">
+          <div className="text-center text-slate-500 text-sm py-12">
             {filter === 'all' ? 'No products expected at this bin.' : 'No items match this filter.'}
           </div>
         )}
@@ -460,7 +460,7 @@ function StatPill({ icon, label, value, color }: { icon: React.ReactNode; label:
     <div className={cn('flex items-center gap-1', color)}>
       {icon}
       <span className="font-bold tabular-nums">{value}</span>
-      <span className="text-neutral-500">{label}</span>
+      <span className="text-slate-500">{label}</span>
     </div>
   )
 }
@@ -493,15 +493,15 @@ function CountLineRow({ line, disabled, onSubmit }: {
     <div className={cn(
       'card p-4 transition-all',
       hasVariance && 'border-red-500/30 bg-red-500/5',
-      isCounted && !hasVariance && 'border-lime-500/20 bg-lime-500/5',
-      editing && 'border-lime-500/50 ring-1 ring-lime-500/20'
+      isCounted && !hasVariance && 'border-orange-500/20 bg-orange-500/5',
+      editing && 'border-orange-500/50 ring-1 ring-orange-500/20'
     )}>
       <div className="flex items-center gap-4">
         {/* Status icon */}
         <div className={cn('w-8 h-8 rounded-lg flex items-center justify-center shrink-0',
           hasVariance ? 'bg-red-500/10 text-red-400' :
-          isCounted ? 'bg-lime-500/10 text-lime-400' :
-          'bg-neutral-800 text-neutral-500'
+          isCounted ? 'bg-orange-500/10 text-orange-400' :
+          'bg-[#1a1f2e] text-slate-500'
         )}>
           {hasVariance ? <XCircle className="w-4 h-4" /> :
            isCounted ? <CheckCircle2 className="w-4 h-4" /> :
@@ -514,19 +514,19 @@ function CountLineRow({ line, disabled, onSubmit }: {
             <span className="font-mono text-xs font-bold text-white truncate">{line.product_id}</span>
           </div>
           {line.product_name && line.product_name !== line.product_id && (
-            <div className="text-xs text-neutral-400 truncate">{line.product_name}</div>
+            <div className="text-xs text-slate-400 truncate">{line.product_name}</div>
           )}
         </div>
 
         {/* Expected qty */}
         <div className="text-center shrink-0 w-24">
-          <div className="text-[10px] text-neutral-500 font-bold uppercase tracking-widest">Finale</div>
+          <div className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Finale</div>
           <div className="text-lg font-black text-white tabular-nums">{line.expected_qty}</div>
         </div>
 
         {/* Hand count / entry */}
         <div className="text-center shrink-0 w-32">
-          <div className="text-[10px] text-neutral-500 font-bold uppercase tracking-widest">Hand Count</div>
+          <div className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Hand Count</div>
           {editing ? (
             <div className="flex items-center gap-1 mt-1">
               <input
@@ -540,14 +540,14 @@ function CountLineRow({ line, disabled, onSubmit }: {
               />
             </div>
           ) : isCounted ? (
-            <div className={cn('text-lg font-black tabular-nums', hasVariance ? 'text-red-400' : 'text-lime-400')}>
+            <div className={cn('text-lg font-black tabular-nums', hasVariance ? 'text-red-400' : 'text-orange-400')}>
               {line.hand_count}
             </div>
           ) : (
             <button
               onClick={() => { setEditing(true); setCountVal(line.expected_qty.toString()) }}
               disabled={disabled}
-              className="mt-1 text-xs text-lime-500 hover:text-lime-400 font-bold uppercase tracking-wide disabled:opacity-30"
+              className="mt-1 text-xs text-orange-500 hover:text-orange-400 font-bold uppercase tracking-wide disabled:opacity-30"
             >
               Enter Count
             </button>
@@ -556,16 +556,16 @@ function CountLineRow({ line, disabled, onSubmit }: {
 
         {/* Variance */}
         <div className="text-center shrink-0 w-24">
-          <div className="text-[10px] text-neutral-500 font-bold uppercase tracking-widest">Variance</div>
+          <div className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Variance</div>
           {isCounted ? (
             <div className={cn('text-lg font-black tabular-nums',
-              line.variance === 0 ? 'text-lime-400' :
+              line.variance === 0 ? 'text-orange-400' :
               (line.variance ?? 0) < 0 ? 'text-red-400' : 'text-amber-400'
             )}>
               {(line.variance ?? 0) > 0 ? '+' : ''}{line.variance}
             </div>
           ) : (
-            <div className="text-lg text-neutral-700">—</div>
+            <div className="text-lg text-slate-700">—</div>
           )}
         </div>
 
@@ -606,8 +606,8 @@ function CountLineRow({ line, disabled, onSubmit }: {
 
       {/* Variance detail */}
       {hasVariance && line.notes && (
-        <div className="mt-2 pl-12 text-xs text-neutral-400">
-          <span className="text-neutral-500">Note:</span> {line.notes}
+        <div className="mt-2 pl-12 text-xs text-slate-400">
+          <span className="text-slate-500">Note:</span> {line.notes}
         </div>
       )}
       {hasVariance && !editing && (

@@ -4,6 +4,7 @@ import {
   type FinaleProduct, type FinaleFacility
 } from './finale'
 import { runAllDetectionRules, type DetectionSummary } from './detection'
+import { EXCLUDED_CATEGORIES } from './utils'
 
 export interface SyncResult {
   products: number
@@ -282,6 +283,7 @@ export async function runFullSync(): Promise<SyncResult> {
       ) s
       LEFT JOIN finale_facilities f ON f.facility_url = s.facility_url
       LEFT JOIN finale_products p ON p.product_id = s.product_id
+      WHERE p.category IS NULL OR p.category NOT IN (${EXCLUDED_CATEGORIES.map(c => `'${c}'`).join(',')})
     `)
     stockLevelCount = (db.prepare(`SELECT COUNT(*) as c FROM computed_stock`).get() as { c: number }).c
   } catch (err) {

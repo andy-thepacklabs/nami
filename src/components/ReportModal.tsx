@@ -26,7 +26,7 @@ export default function ReportModal({ onClose }: { onClose: () => void }) {
   if (!data) {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-        <div className="bg-[#111111] border border-neutral-800 rounded-2xl w-full max-w-2xl p-8 text-center text-neutral-500 text-sm">
+        <div className="bg-[#0d1117] border border-[#1e2433] rounded-2xl w-full max-w-2xl p-8 text-center text-slate-500 text-sm">
           Loading report...
         </div>
       </div>
@@ -38,12 +38,12 @@ export default function ReportModal({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-      <div className="bg-[#111111] border border-neutral-800 rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-neutral-800">
+      <div className="bg-[#0d1117] border border-[#1e2433] rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-[#1e2433]">
           <div className="flex items-center gap-2">
-            <BarChart2 className="w-5 h-5 text-lime-500" />
+            <BarChart2 className="w-5 h-5 text-orange-500" />
             <h2 className="font-bold text-white uppercase tracking-wide text-sm">Daily Discrepancy Report</h2>
-            <span className="text-xs text-neutral-500 font-mono">{data.date}</span>
+            <span className="text-xs text-slate-500 font-mono">{data.date}</span>
           </div>
           <button onClick={onClose} className="btn-ghost w-8 h-8 p-0 justify-center">
             <X className="w-4 h-4" />
@@ -55,24 +55,24 @@ export default function ReportModal({ onClose }: { onClose: () => void }) {
           <div className="grid grid-cols-2 gap-4">
             <div className="card p-4 text-center">
               <div className="text-3xl font-black text-amber-400 tabular-nums">{data.opened_today}</div>
-              <div className="text-[10px] text-neutral-500 mt-1 font-bold uppercase tracking-[0.2em]">Opened Today</div>
+              <div className="text-[10px] text-slate-500 mt-1 font-bold uppercase tracking-[0.2em]">Opened Today</div>
             </div>
             <div className="card p-4 text-center">
-              <div className="text-3xl font-black text-lime-400 tabular-nums">{data.resolved_today}</div>
-              <div className="text-[10px] text-neutral-500 mt-1 font-bold uppercase tracking-[0.2em]">Resolved Today</div>
+              <div className="text-3xl font-black text-orange-400 tabular-nums">{data.resolved_today}</div>
+              <div className="text-[10px] text-slate-500 mt-1 font-bold uppercase tracking-[0.2em]">Resolved Today</div>
             </div>
           </div>
 
           {/* By priority */}
           <div className="card p-4">
-            <p className="text-[10px] font-bold text-neutral-500 uppercase tracking-[0.2em] mb-4">Open by Priority</p>
+            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em] mb-4">Open by Priority</p>
             <div className="flex flex-col gap-3">
               {data.open_by_priority.map(({ priority, count }) => (
                 <div key={priority} className="flex items-center gap-3">
                   <span className={cn('badge w-20 justify-center text-[10px]', PRIORITY_COLORS[priority as keyof typeof PRIORITY_COLORS])}>
                     {PRIORITY_LABELS[priority as keyof typeof PRIORITY_LABELS] ?? priority}
                   </span>
-                  <div className="flex-1 bg-neutral-800 rounded-full h-2">
+                  <div className="flex-1 bg-[#1a1f2e] rounded-full h-2">
                     <div
                       className={cn('h-2 rounded-full transition-all', {
                         'bg-red-500': priority === 'critical',
@@ -86,21 +86,21 @@ export default function ReportModal({ onClose }: { onClose: () => void }) {
                   <span className="text-sm font-bold tabular-nums text-white w-6 text-right">{count}</span>
                 </div>
               ))}
-              {data.open_by_priority.length === 0 && <p className="text-sm text-neutral-500">No open issues.</p>}
+              {data.open_by_priority.length === 0 && <p className="text-sm text-slate-500">No open issues.</p>}
             </div>
           </div>
 
           {/* By type */}
           <div className="card p-4">
-            <p className="text-[10px] font-bold text-neutral-500 uppercase tracking-[0.2em] mb-4">Open by Type</p>
+            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em] mb-4">Open by Type</p>
             <div className="flex flex-col gap-3">
               {data.open_by_type.map(({ type, count }) => (
                 <div key={type} className="flex items-center gap-3">
-                  <span className="text-xs text-neutral-400 w-36 truncate shrink-0">
+                  <span className="text-xs text-slate-400 w-36 truncate shrink-0">
                     {TYPE_LABELS[type as keyof typeof TYPE_LABELS] ?? type}
                   </span>
-                  <div className="flex-1 bg-neutral-800 rounded-full h-2">
-                    <div className="h-2 rounded-full bg-lime-500" style={{ width: `${(count / maxTypeCount) * 100}%` }} />
+                  <div className="flex-1 bg-[#1a1f2e] rounded-full h-2">
+                    <div className="h-2 rounded-full bg-orange-500" style={{ width: `${(count / maxTypeCount) * 100}%` }} />
                   </div>
                   <span className="text-sm font-bold tabular-nums text-white w-6 text-right">{count}</span>
                 </div>
@@ -111,28 +111,28 @@ export default function ReportModal({ onClose }: { onClose: () => void }) {
           {/* Top SKUs + Bins */}
           <div className="grid grid-cols-2 gap-4">
             <div className="card p-4">
-              <p className="text-[10px] font-bold text-neutral-500 uppercase tracking-[0.2em] mb-3 flex items-center gap-1.5">
+              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em] mb-3 flex items-center gap-1.5">
                 <Package className="w-3.5 h-3.5" /> Top SKUs
               </p>
               {data.top_skus.slice(0, 5).map(({ sku, count }) => (
                 <div key={sku} className="flex items-center justify-between py-1.5">
                   <span className="font-mono text-xs text-white font-medium">{sku}</span>
-                  <span className="text-xs text-neutral-500 tabular-nums font-mono">{count}</span>
+                  <span className="text-xs text-slate-500 tabular-nums font-mono">{count}</span>
                 </div>
               ))}
-              {data.top_skus.length === 0 && <p className="text-xs text-neutral-700">None</p>}
+              {data.top_skus.length === 0 && <p className="text-xs text-slate-700">None</p>}
             </div>
             <div className="card p-4">
-              <p className="text-[10px] font-bold text-neutral-500 uppercase tracking-[0.2em] mb-3 flex items-center gap-1.5">
+              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em] mb-3 flex items-center gap-1.5">
                 <MapPin className="w-3.5 h-3.5" /> Hot Bins
               </p>
               {data.top_bins.slice(0, 5).map(({ bin, count }) => (
                 <div key={bin} className="flex items-center justify-between py-1.5">
-                  <span className="font-mono text-xs text-lime-400 font-medium">{bin}</span>
-                  <span className="text-xs text-neutral-500 tabular-nums font-mono">{count}</span>
+                  <span className="font-mono text-xs text-orange-400 font-medium">{bin}</span>
+                  <span className="text-xs text-slate-500 tabular-nums font-mono">{count}</span>
                 </div>
               ))}
-              {data.top_bins.length === 0 && <p className="text-xs text-neutral-700">None</p>}
+              {data.top_bins.length === 0 && <p className="text-xs text-slate-700">None</p>}
             </div>
           </div>
 
@@ -144,12 +144,12 @@ export default function ReportModal({ onClose }: { onClose: () => void }) {
               </p>
               <div className="flex flex-col gap-2">
                 {data.unresolved_critical.map(d => (
-                  <div key={d.id} className="flex items-center gap-3 py-2 border-b border-neutral-800 last:border-0">
-                    <span className="font-mono text-xs text-neutral-400">{d.order_number}</span>
+                  <div key={d.id} className="flex items-center gap-3 py-2 border-b border-[#1e2433] last:border-0">
+                    <span className="font-mono text-xs text-slate-400">{d.order_number}</span>
                     <span className="font-mono text-xs text-white font-medium">{d.sku}</span>
-                    <span className="font-mono text-xs text-lime-400">{d.bin_location}</span>
+                    <span className="font-mono text-xs text-orange-400">{d.bin_location}</span>
                     <span className={cn('badge text-[10px] ml-auto', STATUS_COLORS[d.status])}>{STATUS_LABELS[d.status]}</span>
-                    {d.assigned_name && <span className="text-xs text-neutral-500">{d.assigned_name}</span>}
+                    {d.assigned_name && <span className="text-xs text-slate-500">{d.assigned_name}</span>}
                   </div>
                 ))}
               </div>

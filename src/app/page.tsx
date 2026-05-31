@@ -4,7 +4,8 @@ import { useState, useEffect, useCallback } from 'react'
 import {
   AlertTriangle, CheckCircle2, Clock, TrendingUp, Search,
   Filter, RefreshCw, Plus, ChevronRight, Bell, BarChart2,
-  Package, MapPin, User, ArrowUpDown, Zap, Database, ClipboardCheck, X
+  Package, MapPin, User, ArrowUpDown, Zap, Database, ClipboardCheck, X,
+  Compass, Anchor
 } from 'lucide-react'
 import { cn, TYPE_LABELS, STATUS_LABELS, STATUS_COLORS, PRIORITY_LABELS, PRIORITY_COLORS, fmtDelta } from '@/lib/utils'
 import type { Discrepancy, DashboardStats } from '@/lib/db'
@@ -92,22 +93,21 @@ export default function Dashboard() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#0a0a0a]">
-        <div className="flex items-center gap-3 text-neutral-400">
-          <RefreshCw className="w-5 h-5 animate-spin text-lime-500" />
-          <span className="text-sm font-medium tracking-wide">LOADING DASHBOARD...</span>
+      <div className="min-h-screen flex items-center justify-center bg-[#0a0c10]">
+        <div className="flex items-center gap-3 text-slate-400">
+          <Compass className="w-6 h-6 animate-spin text-orange-500" />
+          <span className="text-sm font-semibold tracking-wide uppercase">Charting course...</span>
         </div>
       </div>
     )
   }
 
-  const { stats, byType, recentActivity } = statsData!
+  const { stats, byType, recentActivity, hotBins } = statsData!
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#0a0a0a]">
+    <div className="min-h-screen flex flex-col bg-[#0a0c10]">
       {/* Top nav */}
-      <header className="h-16 border-b border-neutral-800 bg-[#0f0f0f] flex items-center px-6 gap-5 sticky top-0 z-30">
-        {/* Pack Labs Logo + Nami branding */}
+      <header className="h-16 border-b border-[#1e2433] bg-[#0d1017] flex items-center px-6 gap-5 sticky top-0 z-30">
         <div className="flex items-center gap-3">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
@@ -115,11 +115,12 @@ export default function Dashboard() {
             alt="The Pack Labs"
             className="h-8 w-auto"
           />
-          <div className="w-px h-8 bg-neutral-700" />
+          <div className="w-px h-8 bg-[#1e2433]" />
           <div className="flex items-center gap-2">
+            <Compass className="w-5 h-5 text-orange-500" />
             <span className="text-lg font-black text-white tracking-tight uppercase">Nami</span>
-            <span className="text-xs font-semibold text-neutral-500 tracking-widest uppercase hidden sm:block">
-              Inventory Dashboard
+            <span className="text-xs font-semibold text-slate-500 tracking-widest uppercase hidden sm:block">
+              Inventory Navigator
             </span>
           </div>
         </div>
@@ -132,7 +133,7 @@ export default function Dashboard() {
             {stats.total_critical} Critical
           </div>
         )}
-        <button onClick={() => setShowValidation(true)} className="btn-primary text-xs bg-amber-500 hover:bg-amber-400">
+        <button onClick={() => setShowValidation(true)} className="btn text-xs bg-orange-500/20 text-orange-400 border border-orange-500/30 hover:bg-orange-500/30">
           <ClipboardCheck className="w-4 h-4" /> Validate
         </button>
         <button onClick={() => setShowFinale(true)} className="btn-ghost text-xs">
@@ -156,8 +157,8 @@ export default function Dashboard() {
 
       <div className="flex flex-1 overflow-hidden">
         {/* Sidebar */}
-        <aside className="w-56 border-r border-neutral-800 bg-[#0f0f0f] flex flex-col p-4 gap-1 shrink-0">
-          <p className="text-[10px] font-bold text-neutral-500 uppercase tracking-[0.2em] px-2 mb-2">Status</p>
+        <aside className="w-56 border-r border-[#1e2433] bg-[#0d1017] flex flex-col p-4 gap-1 shrink-0 overflow-y-auto">
+          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em] px-2 mb-2">Status</p>
           {[
             { label: 'All Issues', value: 'all', count: stats.total_all },
             { label: 'Open',       value: 'open' },
@@ -171,21 +172,21 @@ export default function Dashboard() {
               className={cn(
                 'flex items-center justify-between px-2 py-2 rounded-lg text-sm transition-colors',
                 statusFilter === value
-                  ? 'bg-lime-500/10 text-lime-400 font-semibold'
-                  : 'text-neutral-400 hover:text-white hover:bg-neutral-800'
+                  ? 'bg-orange-500/10 text-orange-400 font-semibold'
+                  : 'text-slate-400 hover:text-white hover:bg-[#1a1f2e]'
               )}
             >
               <span>{label}</span>
               {count !== undefined && (
-                <span className={cn('text-xs tabular-nums', statusFilter === value ? 'text-lime-400' : 'text-neutral-600')}>
+                <span className={cn('text-xs tabular-nums', statusFilter === value ? 'text-orange-400' : 'text-slate-600')}>
                   {count}
                 </span>
               )}
             </button>
           ))}
 
-          <div className="border-t border-neutral-800 mt-3 pt-3">
-            <p className="text-[10px] font-bold text-neutral-500 uppercase tracking-[0.2em] px-2 mb-2">Priority</p>
+          <div className="border-t border-[#1e2433] mt-3 pt-3">
+            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em] px-2 mb-2">Priority</p>
             {(['all','critical','high','medium','low'] as const).map((p) => (
               <button
                 key={p}
@@ -193,16 +194,16 @@ export default function Dashboard() {
                 className={cn(
                   'flex items-center gap-2 w-full px-2 py-2 rounded-lg text-sm transition-colors',
                   priorityFilter === p
-                    ? 'bg-lime-500/10 text-lime-400 font-semibold'
-                    : 'text-neutral-400 hover:text-white hover:bg-neutral-800'
+                    ? 'bg-orange-500/10 text-orange-400 font-semibold'
+                    : 'text-slate-400 hover:text-white hover:bg-[#1a1f2e]'
                 )}
               >
                 {p !== 'all' && (
                   <span className={cn('w-2 h-2 rounded-full', {
                     'bg-red-500': p === 'critical',
-                    'bg-amber-500': p === 'high',
-                    'bg-blue-500': p === 'medium',
-                    'bg-neutral-500': p === 'low',
+                    'bg-orange-500': p === 'high',
+                    'bg-sky-500': p === 'medium',
+                    'bg-slate-500': p === 'low',
                   })} />
                 )}
                 {p === 'all' ? 'All' : PRIORITY_LABELS[p]}
@@ -211,39 +212,36 @@ export default function Dashboard() {
           </div>
 
           {/* Hot Bins */}
-          {statsData!.hotBins?.length > 0 && (
-            <div className="border-t border-neutral-800 mt-3 pt-3">
+          {hotBins?.length > 0 && (
+            <div className="border-t border-[#1e2433] mt-3 pt-3">
               <div className="flex items-center justify-between px-2 mb-2">
-                <p className="text-[10px] font-bold text-neutral-500 uppercase tracking-[0.2em]">Hot Bins</p>
+                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em]">
+                  <Anchor className="w-3 h-3 inline mr-1 -mt-0.5" />Hot Bins
+                </p>
                 {binFilter && (
-                  <button
-                    onClick={() => setBinFilter('')}
-                    className="text-[10px] text-lime-500 hover:text-lime-400 font-bold"
-                  >
+                  <button onClick={() => setBinFilter('')} className="text-[10px] text-orange-500 hover:text-orange-400 font-bold">
                     Clear
                   </button>
                 )}
               </div>
-              {statsData!.hotBins.slice(0, 10).map(({ bin, count, critical_count }) => (
+              {hotBins.slice(0, 10).map(({ bin, count, critical_count }) => (
                 <button
                   key={bin}
                   onClick={() => setBinFilter(binFilter === bin ? '' : bin)}
                   className={cn(
                     'flex items-center justify-between w-full px-2 py-1.5 rounded-lg text-xs transition-colors',
                     binFilter === bin
-                      ? 'bg-lime-500/10 text-lime-400 font-semibold'
-                      : 'text-neutral-400 hover:text-white hover:bg-neutral-800'
+                      ? 'bg-orange-500/10 text-orange-400 font-semibold'
+                      : 'text-slate-400 hover:text-white hover:bg-[#1a1f2e]'
                   )}
                 >
                   <span className="flex items-center gap-1.5 truncate">
-                    <MapPin className="w-3 h-3 shrink-0 text-neutral-600" />
+                    <MapPin className="w-3 h-3 shrink-0 text-slate-600" />
                     <span className="font-mono truncate">{bin}</span>
                   </span>
                   <span className="flex items-center gap-1.5 shrink-0">
-                    {critical_count > 0 && (
-                      <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
-                    )}
-                    <span className={cn('tabular-nums font-mono', binFilter === bin ? 'text-lime-400' : 'text-neutral-600')}>
+                    {critical_count > 0 && <span className="w-1.5 h-1.5 rounded-full bg-red-500" />}
+                    <span className={cn('tabular-nums font-mono', binFilter === bin ? 'text-orange-400' : 'text-slate-600')}>
                       {count}
                     </span>
                   </span>
@@ -253,12 +251,12 @@ export default function Dashboard() {
           )}
 
           {byType.length > 0 && (
-            <div className="border-t border-neutral-800 mt-3 pt-3">
-              <p className="text-[10px] font-bold text-neutral-500 uppercase tracking-[0.2em] px-2 mb-2">By Type</p>
+            <div className="border-t border-[#1e2433] mt-3 pt-3">
+              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em] px-2 mb-2">By Type</p>
               {byType.slice(0, 5).map(({ type, count }) => (
                 <div key={type} className="flex items-center justify-between px-2 py-1.5">
-                  <span className="text-xs text-neutral-500 truncate">{TYPE_LABELS[type as keyof typeof TYPE_LABELS] ?? type}</span>
-                  <span className="text-xs text-neutral-600 tabular-nums font-mono">{count}</span>
+                  <span className="text-xs text-slate-500 truncate">{TYPE_LABELS[type as keyof typeof TYPE_LABELS] ?? type}</span>
+                  <span className="text-xs text-slate-600 tabular-nums font-mono">{count}</span>
                 </div>
               ))}
             </div>
@@ -298,16 +296,16 @@ export default function Dashboard() {
               label="Resolved Today"
               value={stats.resolved_today}
               icon={<CheckCircle2 className="w-5 h-5" />}
-              color="text-lime-400"
-              bg="bg-lime-500/10"
-              border="border-lime-500/20"
+              color="text-emerald-400"
+              bg="bg-emerald-500/10"
+              border="border-emerald-500/20"
             />
           </div>
 
           {/* Search + filters row */}
           <div className="flex items-center gap-3">
             <div className="relative flex-1 max-w-sm">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-500 pointer-events-none" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 pointer-events-none" />
               <input
                 className="input w-full pl-9"
                 placeholder="Search SKU, order, bin..."
@@ -316,15 +314,15 @@ export default function Dashboard() {
               />
             </div>
             {binFilter && (
-              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-lime-500/10 border border-lime-500/20">
-                <MapPin className="w-3 h-3 text-lime-500" />
-                <span className="text-xs font-mono font-bold text-lime-400">{binFilter}</span>
-                <button onClick={() => setBinFilter('')} className="text-lime-500 hover:text-white ml-1">
+              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-orange-500/10 border border-orange-500/20">
+                <MapPin className="w-3 h-3 text-orange-500" />
+                <span className="text-xs font-mono font-bold text-orange-400">{binFilter}</span>
+                <button onClick={() => setBinFilter('')} className="text-orange-500 hover:text-white ml-1">
                   <X className="w-3 h-3" />
                 </button>
               </div>
             )}
-            <div className="flex items-center gap-1.5 text-xs text-neutral-500 font-medium">
+            <div className="flex items-center gap-1.5 text-xs text-slate-500 font-medium">
               <Filter className="w-3.5 h-3.5" />
               {listData?.total ?? 0} result{(listData?.total ?? 0) !== 1 ? 's' : ''}
             </div>
@@ -335,15 +333,15 @@ export default function Dashboard() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-neutral-800 bg-neutral-900/50">
+                  <tr className="border-b border-[#1e2433] bg-[#0d1017]/50">
                     {['Priority', 'Order', 'SKU', 'Bin', 'Type', 'Qty Delta', 'Status', 'Assigned', 'Age', ''].map(h => (
-                      <th key={h} className="text-left text-[10px] font-bold text-neutral-500 px-4 py-3 whitespace-nowrap uppercase tracking-[0.15em]">
+                      <th key={h} className="text-left text-[10px] font-bold text-slate-500 px-4 py-3 uppercase tracking-[0.15em] whitespace-nowrap">
                         {h}
                       </th>
                     ))}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-neutral-800/50">
+                <tbody className="divide-y divide-[#1e2433]/50">
                   {listData?.rows.map(row => (
                     <DiscrepancyRow
                       key={row.id}
@@ -353,8 +351,8 @@ export default function Dashboard() {
                   ))}
                   {listData?.rows.length === 0 && (
                     <tr>
-                      <td colSpan={10} className="px-4 py-12 text-center text-neutral-500 text-sm">
-                        No discrepancies match your filters.
+                      <td colSpan={10} className="px-4 py-12 text-center text-slate-500 text-sm">
+                        No discrepancies found. All clear, Captain!
                       </td>
                     </tr>
                   )}
@@ -363,8 +361,8 @@ export default function Dashboard() {
             </div>
 
             {listData && listData.total > listData.limit && (
-              <div className="flex items-center justify-between border-t border-neutral-800 px-4 py-3">
-                <span className="text-xs text-neutral-500">
+              <div className="flex items-center justify-between border-t border-[#1e2433] px-4 py-3">
+                <span className="text-xs text-slate-500">
                   Showing {((page - 1) * listData.limit) + 1}–{Math.min(page * listData.limit, listData.total)} of {listData.total}
                 </span>
                 <div className="flex items-center gap-2">
@@ -390,25 +388,27 @@ export default function Dashboard() {
           {/* Recent activity feed */}
           {recentActivity.length > 0 && (
             <div className="card p-4">
-              <p className="text-[10px] font-bold text-neutral-500 uppercase tracking-[0.2em] mb-3">Recent Activity</p>
+              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em] mb-3">
+                <Clock className="w-3 h-3 inline mr-1 -mt-0.5" />Ship&apos;s Log
+              </p>
               <div className="flex flex-col gap-1">
                 {recentActivity.map(item => (
                   <button
                     key={item.id}
                     onClick={() => setSelectedId(item.id!)}
-                    className="flex items-center gap-3 text-left hover:bg-neutral-800 rounded-lg p-2.5 -mx-2 transition-colors group"
+                    className="flex items-center gap-3 text-left hover:bg-[#1a1f2e] rounded-lg p-2.5 -mx-2 transition-colors group"
                   >
-                    <div className="w-1.5 h-1.5 rounded-full bg-lime-500 shrink-0" />
-                    <span className="font-mono text-xs text-neutral-400">{item.order_number}</span>
-                    <span className="text-xs text-neutral-300">{TYPE_LABELS[item.discrepancy_type as keyof typeof TYPE_LABELS]}</span>
-                    <span className="font-mono text-xs text-neutral-500">{item.sku}</span>
-                    <span className="font-mono text-xs text-neutral-500">{item.bin_location}</span>
+                    <div className="w-1.5 h-1.5 rounded-full bg-orange-500 shrink-0" />
+                    <span className="font-mono text-xs text-slate-400">{item.order_number}</span>
+                    <span className="text-xs text-slate-300">{TYPE_LABELS[item.discrepancy_type as keyof typeof TYPE_LABELS]}</span>
+                    <span className="font-mono text-xs text-slate-500">{item.sku}</span>
+                    <span className="font-mono text-xs text-slate-500">{item.bin_location}</span>
                     <div className="ml-auto flex items-center gap-2">
                       <span className={cn('badge text-[10px]', STATUS_COLORS[item.status as keyof typeof STATUS_COLORS])}>
                         {STATUS_LABELS[item.status as keyof typeof STATUS_LABELS]}
                       </span>
-                      <span className="text-xs text-neutral-600">{fmtDelta(item.created_at!)}</span>
-                      <ChevronRight className="w-3.5 h-3.5 text-neutral-700 group-hover:text-lime-500 transition-colors" />
+                      <span className="text-xs text-slate-600">{fmtDelta(item.created_at!)}</span>
+                      <ChevronRight className="w-3.5 h-3.5 text-slate-700 group-hover:text-orange-500 transition-colors" />
                     </div>
                   </button>
                 ))}
@@ -420,17 +420,10 @@ export default function Dashboard() {
 
       {/* Modals */}
       {selectedId && (
-        <DiscrepancyModal
-          id={selectedId}
-          onClose={() => setSelectedId(null)}
-          onUpdate={refresh}
-        />
+        <DiscrepancyModal id={selectedId} onClose={() => setSelectedId(null)} onUpdate={refresh} />
       )}
       {showNew && (
-        <NewDiscrepancyModal
-          onClose={() => setShowNew(false)}
-          onCreated={() => { setShowNew(false); refresh() }}
-        />
+        <NewDiscrepancyModal onClose={() => setShowNew(false)} onCreated={() => { setShowNew(false); refresh() }} />
       )}
       {showReport && (
         <ReportModal onClose={() => setShowReport(false)} />
@@ -439,10 +432,7 @@ export default function Dashboard() {
         <FinalePanel onClose={() => setShowFinale(false)} onSync={() => refresh()} />
       )}
       {showValidation && (
-        <ValidationPanel
-          onClose={() => setShowValidation(false)}
-          onDiscrepancyCreated={() => refresh()}
-        />
+        <ValidationPanel onClose={() => setShowValidation(false)} onDiscrepancyCreated={() => refresh()} />
       )}
     </div>
   )
@@ -455,13 +445,13 @@ function StatCard({
   color: string; bg: string; border: string; pulse?: boolean
 }) {
   return (
-    <div className={cn('rounded-xl p-4 flex items-center gap-4 border bg-neutral-900', border, pulse && 'ring-1 ring-red-500/30')}>
+    <div className={cn('rounded-xl p-4 flex items-center gap-4 border bg-[#111520]', border, pulse && 'ring-1 ring-red-500/30')}>
       <div className={cn('w-11 h-11 rounded-lg flex items-center justify-center shrink-0', bg, color)}>
         {icon}
       </div>
       <div>
         <div className="text-2xl font-black text-white tabular-nums">{value}</div>
-        <div className="text-[10px] text-neutral-500 font-semibold uppercase tracking-[0.15em]">{label}</div>
+        <div className="text-[10px] text-slate-500 font-semibold uppercase tracking-[0.15em]">{label}</div>
       </div>
     </div>
   )
@@ -471,62 +461,57 @@ function DiscrepancyRow({ row, onClick }: { row: Discrepancy; onClick: () => voi
   const delta = row.shipped_qty - row.expected_qty
 
   return (
-    <tr
-      onClick={onClick}
-      className="hover:bg-neutral-800/50 cursor-pointer transition-colors group"
-    >
+    <tr onClick={onClick} className="hover:bg-[#1a1f2e]/50 cursor-pointer transition-colors group">
       <td className="px-4 py-3">
         <span className={cn('badge text-[10px]', PRIORITY_COLORS[row.priority])}>
           <span className={cn('w-1.5 h-1.5 rounded-full', {
             'bg-red-500': row.priority === 'critical',
-            'bg-amber-500': row.priority === 'high',
-            'bg-blue-500': row.priority === 'medium',
-            'bg-neutral-500': row.priority === 'low',
+            'bg-orange-500': row.priority === 'high',
+            'bg-sky-500': row.priority === 'medium',
+            'bg-slate-500': row.priority === 'low',
           })} />
           {PRIORITY_LABELS[row.priority]}
         </span>
       </td>
-      <td className="px-4 py-3 font-mono text-xs text-neutral-300">{row.order_number}</td>
+      <td className="px-4 py-3 font-mono text-xs text-slate-300">{row.order_number}</td>
       <td className="px-4 py-3">
         <div className="flex items-center gap-1.5">
-          <Package className="w-3.5 h-3.5 text-neutral-600 shrink-0" />
+          <Package className="w-3.5 h-3.5 text-slate-600 shrink-0" />
           <span className="font-mono text-xs text-white font-medium">{row.sku}</span>
         </div>
       </td>
       <td className="px-4 py-3">
         <div className="flex items-center gap-1.5">
-          <MapPin className="w-3.5 h-3.5 text-neutral-600 shrink-0" />
-          <span className="font-mono text-xs text-lime-400 font-medium">{row.bin_location}</span>
+          <MapPin className="w-3.5 h-3.5 text-slate-600 shrink-0" />
+          <span className="font-mono text-xs text-orange-400 font-medium">{row.bin_location}</span>
         </div>
       </td>
-      <td className="px-4 py-3 text-xs text-neutral-300">{TYPE_LABELS[row.discrepancy_type]}</td>
+      <td className="px-4 py-3 text-xs text-slate-300">{TYPE_LABELS[row.discrepancy_type]}</td>
       <td className="px-4 py-3">
         <div className="flex items-center gap-1">
-          <ArrowUpDown className="w-3 h-3 text-neutral-600" />
-          <span className={cn('font-mono text-xs font-bold', delta < 0 ? 'text-red-400' : delta > 0 ? 'text-amber-400' : 'text-neutral-400')}>
+          <ArrowUpDown className="w-3 h-3 text-slate-600" />
+          <span className={cn('font-mono text-xs font-bold', delta < 0 ? 'text-red-400' : delta > 0 ? 'text-amber-400' : 'text-slate-400')}>
             {delta > 0 ? '+' : ''}{delta}
           </span>
-          <span className="text-xs text-neutral-600">({row.expected_qty}/{row.shipped_qty})</span>
+          <span className="text-xs text-slate-600">({row.expected_qty}/{row.shipped_qty})</span>
         </div>
       </td>
       <td className="px-4 py-3">
-        <span className={cn('badge text-[10px]', STATUS_COLORS[row.status])}>
-          {STATUS_LABELS[row.status]}
-        </span>
+        <span className={cn('badge text-[10px]', STATUS_COLORS[row.status])}>{STATUS_LABELS[row.status]}</span>
       </td>
       <td className="px-4 py-3">
         {row.assigned_name ? (
           <div className="flex items-center gap-1.5">
-            <User className="w-3.5 h-3.5 text-neutral-600" />
-            <span className="text-xs text-neutral-300">{row.assigned_name}</span>
+            <User className="w-3.5 h-3.5 text-slate-600" />
+            <span className="text-xs text-slate-300">{row.assigned_name}</span>
           </div>
         ) : (
-          <span className="text-xs text-neutral-700">—</span>
+          <span className="text-xs text-slate-700">—</span>
         )}
       </td>
-      <td className="px-4 py-3 text-xs text-neutral-500 whitespace-nowrap">{fmtDelta(row.created_at)}</td>
+      <td className="px-4 py-3 text-xs text-slate-500 whitespace-nowrap">{fmtDelta(row.created_at)}</td>
       <td className="px-4 py-3">
-        <ChevronRight className="w-4 h-4 text-neutral-700 group-hover:text-lime-500 transition-colors" />
+        <ChevronRight className="w-4 h-4 text-slate-700 group-hover:text-orange-500 transition-colors" />
       </td>
     </tr>
   )

@@ -1,4 +1,11 @@
 import { getDb } from './db'
+import { EXCLUDED_CATEGORIES } from './utils'
+
+const CATEGORY_FILTER = `AND NOT EXISTS (
+  SELECT 1 FROM finale_products fp
+  WHERE fp.product_id = cs.product_id
+  AND fp.category IN (${EXCLUDED_CATEGORIES.map(c => `'${c}'`).join(',')})
+)`
 
 export interface DetectionResult {
   rule: string
@@ -40,6 +47,7 @@ function detectNegativeStock(): DetectionResult {
     SELECT cs.product_id, cs.product_name, cs.facility_url, cs.facility_name, cs.net_qty
     FROM computed_stock cs
     WHERE cs.net_qty < -10
+    ${CATEGORY_FILTER}
     ORDER BY cs.net_qty ASC
     LIMIT 50
   `).all() as {
@@ -104,6 +112,7 @@ function detectGhostStock(): DetectionResult {
     FROM computed_stock cs
     JOIN finale_facilities f ON f.facility_url = cs.facility_url
     WHERE f.status = 'FACILITY_INACTIVE' AND cs.net_qty > 10
+    ${CATEGORY_FILTER}
     ORDER BY cs.net_qty DESC
     LIMIT 50
   `).all() as {
@@ -163,12 +172,17 @@ function detectDuplicateTransfers(): DetectionResult {
   let skipped = 0
 
   const rows = db.prepare(`
-    SELECT product_id, quantity, facility_from, facility_to, send_date, COUNT(*) AS cnt
-    FROM finale_transfers
-    WHERE quantity > 0
-    GROUP BY product_id, quantity, facility_from, facility_to, send_date
+    SELECT t.product_id, t.quantity, t.facility_from, t.facility_to, t.send_date, COUNT(*) AS cnt
+    FROM finale_transfers t
+    WHERE t.quantity > 0
+    AND NOT EXISTS (
+      SELECT 1 FROM finale_products fp
+      WHERE fp.product_id = t.product_id
+      AND fp.category IN (${EXCLUDED_CATEGORIES.map(c => `'${c}'`).join(',')})
+    )
+    GROUP BY t.product_id, t.quantity, t.facility_from, t.facility_to, t.send_date
     HAVING cnt > 2
-    ORDER BY (quantity * cnt) DESC
+    ORDER BY (t.quantity * cnt) DESC
     LIMIT 30
   `).all() as {
     product_id: string; quantity: number

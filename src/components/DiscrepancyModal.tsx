@@ -58,7 +58,7 @@ export default function DiscrepancyModal({
   if (!data) {
     return (
       <ModalShell onClose={onClose}>
-        <div className="flex items-center justify-center h-64 text-neutral-500 text-sm">Loading...</div>
+        <div className="flex items-center justify-center h-64 text-slate-500 text-sm">Loading...</div>
       </ModalShell>
     )
   }
@@ -69,19 +69,19 @@ export default function DiscrepancyModal({
   return (
     <ModalShell onClose={onClose}>
       {/* Header */}
-      <div className="flex items-start justify-between px-6 py-4 border-b border-neutral-800">
+      <div className="flex items-start justify-between px-6 py-4 border-b border-[#1e2433]">
         <div className="flex flex-col gap-1.5">
           <div className="flex items-center gap-3">
-            <span className="font-mono text-sm text-neutral-400">{disc.order_number}</span>
+            <span className="font-mono text-sm text-slate-400">{disc.order_number}</span>
             <span className={cn('badge text-[10px]', STATUS_COLORS[disc.status])}>{STATUS_LABELS[disc.status]}</span>
             <span className={cn('badge text-[10px]', PRIORITY_COLORS[disc.priority])}>{PRIORITY_LABELS[disc.priority]}</span>
           </div>
           <div className="flex items-center gap-2 text-white font-bold">
-            <Package className="w-4 h-4 text-lime-500" />
+            <Package className="w-4 h-4 text-orange-500" />
             {disc.sku}
-            <span className="text-neutral-600">·</span>
-            <MapPin className="w-4 h-4 text-lime-500" />
-            <span className="font-mono text-lime-400">{disc.bin_location}</span>
+            <span className="text-slate-600">·</span>
+            <MapPin className="w-4 h-4 text-orange-500" />
+            <span className="font-mono text-orange-400">{disc.bin_location}</span>
           </div>
         </div>
         <button onClick={onClose} className="btn-ghost w-8 h-8 p-0 justify-center">
@@ -90,9 +90,9 @@ export default function DiscrepancyModal({
       </div>
 
       {/* Quick actions bar */}
-      <div className="flex items-center gap-3 px-6 py-3 bg-neutral-900/50 border-b border-neutral-800">
+      <div className="flex items-center gap-3 px-6 py-3 bg-[#111520] border-b border-[#1e2433]">
         <div className="flex items-center gap-2">
-          <label className="text-[10px] text-neutral-500 font-bold uppercase tracking-widest whitespace-nowrap">Status</label>
+          <label className="text-[10px] text-slate-500 font-bold uppercase tracking-widest whitespace-nowrap">Status</label>
           <select
             value={disc.status}
             onChange={e => patchField('status', e.target.value)}
@@ -104,7 +104,7 @@ export default function DiscrepancyModal({
           </select>
         </div>
         <div className="flex items-center gap-2">
-          <label className="text-[10px] text-neutral-500 font-bold uppercase tracking-widest whitespace-nowrap">Priority</label>
+          <label className="text-[10px] text-slate-500 font-bold uppercase tracking-widest whitespace-nowrap">Priority</label>
           <select
             value={disc.priority}
             onChange={e => patchField('priority', e.target.value)}
@@ -116,7 +116,7 @@ export default function DiscrepancyModal({
           </select>
         </div>
         <div className="flex items-center gap-2">
-          <label className="text-[10px] text-neutral-500 font-bold uppercase tracking-widest whitespace-nowrap">Assigned</label>
+          <label className="text-[10px] text-slate-500 font-bold uppercase tracking-widest whitespace-nowrap">Assigned</label>
           <select
             value={disc.assigned_to ?? ''}
             onChange={e => patchField('assigned_to', e.target.value ? parseInt(e.target.value) : null)}
@@ -130,7 +130,7 @@ export default function DiscrepancyModal({
           {disc.status !== 'resolved' && (
             <button
               onClick={() => patchField('status', 'resolved')}
-              className="btn text-xs py-1.5 px-3 bg-lime-500/10 text-lime-400 border border-lime-500/20 hover:bg-lime-500/20"
+              className="btn text-xs py-1.5 px-3 bg-orange-500/10 text-orange-400 border border-orange-500/20 hover:bg-orange-500/20"
             >
               <CheckCircle2 className="w-3.5 h-3.5" /> Resolve
             </button>
@@ -147,7 +147,7 @@ export default function DiscrepancyModal({
       </div>
 
       {/* Tabs */}
-      <div className="flex border-b border-neutral-800 px-6">
+      <div className="flex border-b border-[#1e2433] px-6">
         {([
           { key: 'details', label: 'Details' },
           { key: 'notes', label: `Notes (${notes.length})` },
@@ -159,8 +159,8 @@ export default function DiscrepancyModal({
             className={cn(
               'px-4 py-3 text-sm font-semibold border-b-2 -mb-px transition-colors uppercase tracking-wide text-xs',
               tab === key
-                ? 'border-lime-500 text-lime-400'
-                : 'border-transparent text-neutral-500 hover:text-white'
+                ? 'border-orange-500 text-orange-400'
+                : 'border-transparent text-slate-500 hover:text-white'
             )}
           >
             {label}
@@ -185,7 +185,7 @@ export default function DiscrepancyModal({
                 label="Discrepancy"
                 value={`${delta > 0 ? '+' : ''}${delta} units`}
                 mono
-                color={delta < 0 ? 'text-red-400' : delta > 0 ? 'text-amber-400' : 'text-lime-400'}
+                color={delta < 0 ? 'text-red-400' : delta > 0 ? 'text-amber-400' : 'text-orange-400'}
               />
             </DetailGroup>
             <DetailGroup title="Classification" className="col-span-2">
@@ -197,11 +197,11 @@ export default function DiscrepancyModal({
               {disc.resolved_at && <DetailRow label="Resolved" value={fmtDelta(disc.resolved_at)} />}
             </DetailGroup>
 
-            <div className="col-span-2 card p-4 bg-neutral-900/50">
-              <p className="text-[10px] text-neutral-500 mb-3 font-bold uppercase tracking-[0.2em]">Quantity Comparison</p>
+            <div className="col-span-2 card p-4 bg-[#111520]">
+              <p className="text-[10px] text-slate-500 mb-3 font-bold uppercase tracking-[0.2em]">Quantity Comparison</p>
               <div className="flex items-end gap-6">
-                <QtyBar label="Expected" value={disc.expected_qty} max={Math.max(disc.expected_qty, disc.shipped_qty)} color="bg-lime-500" />
-                <QtyBar label="Shipped" value={disc.shipped_qty} max={Math.max(disc.expected_qty, disc.shipped_qty)} color={delta < 0 ? 'bg-red-500' : delta > 0 ? 'bg-amber-500' : 'bg-lime-500'} />
+                <QtyBar label="Expected" value={disc.expected_qty} max={Math.max(disc.expected_qty, disc.shipped_qty)} color="bg-orange-500" />
+                <QtyBar label="Shipped" value={disc.shipped_qty} max={Math.max(disc.expected_qty, disc.shipped_qty)} color={delta < 0 ? 'bg-red-500' : delta > 0 ? 'bg-amber-500' : 'bg-orange-500'} />
               </div>
             </div>
           </div>
@@ -210,7 +210,7 @@ export default function DiscrepancyModal({
         {tab === 'notes' && (
           <div className="flex flex-col gap-4">
             {notes.length === 0 && (
-              <div className="flex flex-col items-center justify-center py-12 text-neutral-500">
+              <div className="flex flex-col items-center justify-center py-12 text-slate-500">
                 <MessageSquare className="w-8 h-8 mb-2 opacity-50" />
                 <p className="text-sm">No notes yet. Add one below.</p>
               </div>
@@ -218,17 +218,17 @@ export default function DiscrepancyModal({
             {notes.map(note => (
               <div key={note.id} className="card p-4">
                 <div className="flex items-center gap-2 mb-2">
-                  <div className="w-6 h-6 rounded-full bg-lime-500/20 flex items-center justify-center text-xs font-bold text-lime-400">
+                  <div className="w-6 h-6 rounded-full bg-orange-500/20 flex items-center justify-center text-xs font-bold text-orange-400">
                     {note.author_name[0]}
                   </div>
                   <span className="text-sm font-semibold text-white">{note.author_name}</span>
-                  <span className="text-xs text-neutral-500 ml-auto">{fmtDelta(note.created_at)}</span>
+                  <span className="text-xs text-slate-500 ml-auto">{fmtDelta(note.created_at)}</span>
                 </div>
-                <p className="text-sm text-neutral-300 whitespace-pre-wrap">{note.body}</p>
+                <p className="text-sm text-slate-300 whitespace-pre-wrap">{note.body}</p>
               </div>
             ))}
 
-            <div className="card p-4 mt-2 bg-neutral-900/50">
+            <div className="card p-4 mt-2 bg-[#111520]">
               <textarea
                 value={noteBody}
                 onChange={e => setNoteBody(e.target.value)}
@@ -237,7 +237,7 @@ export default function DiscrepancyModal({
                 onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) submitNote() }}
               />
               <div className="flex items-center justify-between mt-3">
-                <span className="text-xs text-neutral-500">Cmd+Enter to submit</span>
+                <span className="text-xs text-slate-500">Cmd+Enter to submit</span>
                 <button
                   onClick={submitNote}
                   disabled={!noteBody.trim() || submitting}
@@ -253,19 +253,19 @@ export default function DiscrepancyModal({
         {tab === 'audit' && (
           <div className="flex flex-col gap-2">
             {audit.length === 0 && (
-              <p className="text-sm text-neutral-500 text-center py-12">No audit history yet.</p>
+              <p className="text-sm text-slate-500 text-center py-12">No audit history yet.</p>
             )}
             {audit.map(entry => (
-              <div key={entry.id} className="flex items-start gap-3 py-2 border-b border-neutral-800 last:border-0">
-                <div className="w-1.5 h-1.5 rounded-full bg-lime-500 mt-2 shrink-0" />
+              <div key={entry.id} className="flex items-start gap-3 py-2 border-b border-[#1e2433] last:border-0">
+                <div className="w-1.5 h-1.5 rounded-full bg-orange-500 mt-2 shrink-0" />
                 <div className="flex-1 min-w-0">
-                  <div className="text-sm text-neutral-300">
+                  <div className="text-sm text-slate-300">
                     <span className="font-semibold text-white">{entry.actor_name}</span>
                     {' '}
                     {formatAuditAction(entry)}
                   </div>
                 </div>
-                <span className="text-xs text-neutral-500 whitespace-nowrap">{fmtDelta(entry.created_at)}</span>
+                <span className="text-xs text-slate-500 whitespace-nowrap">{fmtDelta(entry.created_at)}</span>
               </div>
             ))}
           </div>
@@ -291,10 +291,10 @@ function QtyBar({ label, value, max, color }: { label: string; value: number; ma
   return (
     <div className="flex flex-col items-center gap-2 w-24">
       <div className="text-xl font-black tabular-nums text-white">{value}</div>
-      <div className="w-full h-24 bg-neutral-800 rounded-lg overflow-hidden flex items-end">
+      <div className="w-full h-24 bg-[#1a1f2e] rounded-lg overflow-hidden flex items-end">
         <div className={cn('w-full rounded-lg transition-all', color)} style={{ height: `${pct}%` }} />
       </div>
-      <div className="text-[10px] text-neutral-500 font-bold uppercase tracking-widest">{label}</div>
+      <div className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">{label}</div>
     </div>
   )
 }
@@ -302,7 +302,7 @@ function QtyBar({ label, value, max, color }: { label: string; value: number; ma
 function DetailGroup({ title, children, className }: { title: string; children: React.ReactNode; className?: string }) {
   return (
     <div className={cn('card p-4', className)}>
-      <p className="text-[10px] font-bold text-neutral-500 uppercase tracking-[0.2em] mb-3">{title}</p>
+      <p className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em] mb-3">{title}</p>
       <div className="flex flex-col gap-2">{children}</div>
     </div>
   )
@@ -313,8 +313,8 @@ function DetailRow({ label, value, mono, highlight, color }: {
 }) {
   return (
     <div className="flex items-center justify-between gap-4">
-      <span className="text-xs text-neutral-500 shrink-0">{label}</span>
-      <span className={cn('text-sm text-right', mono && 'font-mono', highlight && 'text-lime-400 font-semibold', color ?? 'text-white')}>
+      <span className="text-xs text-slate-500 shrink-0">{label}</span>
+      <span className={cn('text-sm text-right', mono && 'font-mono', highlight && 'text-orange-400 font-semibold', color ?? 'text-white')}>
         {value}
       </span>
     </div>
@@ -324,7 +324,7 @@ function DetailRow({ label, value, mono, highlight, color }: {
 function ModalShell({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-      <div className="bg-[#111111] border border-neutral-800 rounded-2xl w-full max-w-3xl max-h-[90vh] flex flex-col shadow-2xl">
+      <div className="bg-[#0d1117] border border-[#1e2433] rounded-2xl w-full max-w-3xl max-h-[90vh] flex flex-col shadow-2xl">
         {children}
       </div>
     </div>

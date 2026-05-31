@@ -13,7 +13,7 @@
 }
 
 body {
-  background-color: #0a0a0a;
+  background-color: #0a0c10;
   color: #e5e5e5;
   font-family: 'Inter', system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
@@ -24,12 +24,12 @@ body {
   height: 6px;
 }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #2a2a2a; border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: #3a3a3a; }
+::-webkit-scrollbar-thumb { background: #1e2433; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #2a3345; }
 
 @layer components {
   .card {
-    @apply bg-neutral-900 border border-neutral-800 rounded-xl;
+    @apply bg-[#111520] border border-[#1e2433] rounded-xl;
   }
   .badge {
     @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-semibold border uppercase tracking-wide;
@@ -38,13 +38,13 @@ body {
     @apply inline-flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed uppercase tracking-wide;
   }
   .btn-primary {
-    @apply btn bg-lime-500 hover:bg-lime-400 text-black;
+    @apply btn bg-orange-500 hover:bg-orange-400 text-white;
   }
   .btn-ghost {
-    @apply btn text-neutral-400 hover:text-white hover:bg-neutral-800 normal-case tracking-normal;
+    @apply btn text-slate-400 hover:text-white hover:bg-[#1a1f2e] normal-case tracking-normal;
   }
   .input {
-    @apply bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-white placeholder-neutral-500 focus:outline-none focus:border-lime-500 focus:ring-1 focus:ring-lime-500/30 transition-colors;
+    @apply bg-[#111520] border border-[#1e2433] rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500/30 transition-colors;
   }
   .select {
     @apply input appearance-none pr-8 cursor-pointer;
