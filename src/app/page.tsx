@@ -17,6 +17,7 @@ import ValidationPanel from '@/components/ValidationPanel'
 import SheetsPanel from '@/components/SheetsPanel'
 import SettingsPanel from '@/components/SettingsPanel'
 import CycleCountPanel from '@/components/CycleCountPanel'
+import ReconcileTab from '@/components/ReconcileTab'
 
 interface HotBin { bin: string; count: number; critical_count: number }
 
@@ -37,6 +38,7 @@ interface ListData {
 const REFRESH_INTERVAL = 30_000
 
 export default function Dashboard() {
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'reconcile'>('dashboard')
   const [statsData, setStatsData] = useState<StatsData | null>(null)
   const [listData, setListData] = useState<ListData | null>(null)
   const [loading, setLoading] = useState(true)
@@ -113,10 +115,27 @@ export default function Dashboard() {
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/nami.png" alt="Nami" className="h-9 w-auto object-contain" onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
             <span className="text-lg font-black text-orange-400 tracking-tight uppercase">Nami</span>
-            <span className="text-xs font-semibold text-orange-600 tracking-widest uppercase hidden sm:block">
-              Inventory Navigator
-            </span>
           </div>
+        </div>
+
+        {/* Top-level tabs */}
+        <div className="flex items-center gap-1 mx-4">
+          <button
+            onClick={() => setActiveTab('dashboard')}
+            className={cn('px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wide transition-colors',
+              activeTab === 'dashboard' ? 'bg-orange-500/15 text-orange-400' : 'text-orange-800 hover:text-orange-400'
+            )}
+          >
+            <BarChart2 className="w-3.5 h-3.5 inline mr-1.5 -mt-0.5" />Dashboard
+          </button>
+          <button
+            onClick={() => setActiveTab('reconcile')}
+            className={cn('px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wide transition-colors',
+              activeTab === 'reconcile' ? 'bg-orange-500/15 text-orange-400' : 'text-orange-800 hover:text-orange-400'
+            )}
+          >
+            <Shield className="w-3.5 h-3.5 inline mr-1.5 -mt-0.5" />Reconcile
+          </button>
         </div>
 
         <div className="flex-1" />
@@ -153,6 +172,9 @@ export default function Dashboard() {
         </button>
       </header>
 
+      {activeTab === 'reconcile' ? (
+        <ReconcileTab />
+      ) : (
       <div className="flex flex-1 overflow-hidden">
         {/* Sidebar */}
         <aside className="w-56 border-r border-orange-900/30 bg-[#0d0a07] flex flex-col p-4 gap-1 shrink-0 overflow-y-auto">
@@ -354,6 +376,7 @@ export default function Dashboard() {
           )}
         </main>
       </div>
+      )}
 
       {selectedId && <DiscrepancyModal id={selectedId} onClose={() => setSelectedId(null)} onUpdate={refresh} />}
       {showNew && <NewDiscrepancyModal onClose={() => setShowNew(false)} onCreated={() => { setShowNew(false); refresh() }} />}
