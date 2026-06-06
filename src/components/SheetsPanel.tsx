@@ -55,8 +55,15 @@ export default function SheetsPanel({ onClose, onVariancesFound }: {
   const [dragOver, setDragOver] = useState(false)
   const [syncing, setSyncing] = useState(false)
   const [syncResult, setSyncResult] = useState<{ ok: boolean; msg: string } | null>(null)
+  const [stockStatus, setStockStatus] = useState<{ count: number; syncedAt: string | null } | null>(null)
+  const [stockFile, setStockFile] = useState<File | null>(null)
+  const [uploadingStock, setUploadingStock] = useState(false)
   type FilterKey = 'all' | 'variance' | 'not_counted' | 'match'
   const [filter, setFilter] = useState<FilterKey>('all')
+
+  useEffect(() => {
+    fetch('/api/finale/import-stock-csv').then(r => r.json()).then(setStockStatus).catch(() => {})
+  }, [])
 
   const runCompareImport = async () => {
     if (!physicalFile || !countedBy.trim()) return
@@ -96,6 +103,25 @@ export default function SheetsPanel({ onClose, onVariancesFound }: {
       setSyncResult({ ok: false, msg: (err as Error).message })
     }
     setSyncing(false)
+  }
+
+  const uploadStockCsv = async (file: File) => {
+    setUploadingStock(true)
+    try {
+      const form = new FormData()
+      form.append('file', file)
+      const res = await fetch('/api/finale/import-stock-csv', { method: 'POST', body: form })
+      const data = await res.json()
+      if (data.error) {
+        setImportError(data.error)
+      } else {
+        setStockStatus({ count: data.imported, syncedAt: data.syncedAt })
+        setStockFile(null)
+      }
+    } catch (err) {
+      setImportError((err as Error).message)
+    }
+    setUploadingStock(false)
   }
 
   const runCsvImport = async () => {
@@ -209,12 +235,38 @@ export default function SheetsPanel({ onClose, onVariancesFound }: {
 
               {inputMode === 'compare' ? (
                 <>
-                  {/* Finale live fetch notice */}
-                  <div className="card p-4 flex items-center gap-3 border-orange-500/20 bg-orange-500/5">
-                    <RefreshCw className="w-4 h-4 text-orange-400 shrink-0" />
-                    <div>
-                      <p className="text-xs font-bold text-orange-300">Finale data fetched live</p>
-                      <p className="text-[10px] text-orange-700 mt-0.5">Current QoH is pulled directly from Finale API when you click Compare — no export needed.</p>
+                  {/* Finale stock status */}
+                  <div className="card p-4 border-orange-900/30">
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-xs font-bold text-white">Finale Stock Data</p>
+                      {stockStatus?.syncedAt && (
+                        <span className="text-[10px] text-orange-700">
+                          Updated {new Date(stockStatus.syncedAt).toLocaleDateString()}
+                        </span>
+                      )}
+                    </div>
+                    {stockStatus && stockStatus.count > 0 ? (
+                      <p className="text-[10px] text-emerald-400 mb-2">✓ {stockStatus.count} products loaded</p>
+                    ) : (
+                      <p className="text-[10px] text-amber-400 mb-2">No stock data — upload your Finale export below</p>
+                    )}
+                    <div
+                      onDragOver={e => e.preventDefault()}
+                      onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) uploadStockCsv(f) }}
+                      onClick={() => document.getElementById('stock-csv-upload')?.click()}
+                      className="border border-dashed border-orange-900/40 hover:border-orange-700/60 rounded-lg p-3 text-center cursor-pointer transition-colors"
+                    >
+                      <input id="stock-csv-upload" type="file" accept=".csv" className="hidden"
+                        onChange={e => { const f = e.target.files?.[0]; if (f) uploadStockCsv(f) }} />
+                      {uploadingStock ? (
+                        <p className="text-[10px] text-orange-400 flex items-center justify-center gap-1">
+                          <RefreshCw className="w-3 h-3 animate-spin" /> Importing...
+                        </p>
+                      ) : (
+                        <p className="text-[10px] text-orange-700">
+                          {stockStatus?.count ? 'Drop new Finale export to update' : 'Drop Finale stock export CSV here'} · <span className="text-orange-500">Products → Export</span>
+                        </p>
+                      )}
                     </div>
                   </div>
 
@@ -257,11 +309,11 @@ export default function SheetsPanel({ onClose, onVariancesFound }: {
 
                   <button
                     onClick={runCompareImport}
-                    disabled={importing || !physicalFile || !countedBy.trim()}
+                    disabled={importing || !physicalFile || !countedBy.trim() || !stockStatus?.count}
                     className="btn-primary text-xs"
                   >
                     {importing ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <ArrowRight className="w-3.5 h-3.5" />}
-                    {importing ? 'Fetching Finale & Comparing...' : 'Compare vs Finale'}
+                    {importing ? 'Comparing...' : 'Compare vs Finale'}
                   </button>
                 </>
               ) : inputMode === 'csv' ? (
