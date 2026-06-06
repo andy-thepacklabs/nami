@@ -1,6 +1,6 @@
 import { getDb } from './db'
 import {
-  fetchProducts, fetchFacilities, fetchShipments, fetchOrders, fetchTransfers, fetchWorkEfforts,
+  fetchProducts, fetchFacilities, fetchShipments, fetchOrders, fetchTransfers, fetchWorkEfforts, fetchInventoryLevels,
   type FinaleProduct, type FinaleFacility, type FinaleWorkEffort
 } from './finale'
 import { runAllDetectionRules, type DetectionSummary } from './detection'
@@ -340,57 +340,30 @@ export async function runFullSync(): Promise<SyncResult> {
     errors.push(`Builds: ${(err as Error).message}`)
   }
 
-  // 7. Compute net stock from transfers + builds
+  // 7. Sync actual inventory levels from Finale (qty_on_hand per product+facility)
   let stockLevelCount = 0
   try {
+    const levels = await fetchInventoryLevels()
     db.exec(`DELETE FROM computed_stock`)
-    db.exec(`
+    const ins = db.prepare(`
       INSERT INTO computed_stock (product_id, facility_url, facility_name, product_name, net_qty, synced_at)
-      SELECT s.product_id, s.facility_url,
-             COALESCE(f.facility_name, s.facility_url),
-             COALESCE(p.internal_name, s.product_id),
-             s.net_qty,
-             datetime('now')
-      FROM (
-        SELECT product_id, facility_url, SUM(qty) AS net_qty
-        FROM (
-          -- Transfers IN to SFS bins (from anywhere)
-          SELECT t.product_id, t.facility_to AS facility_url, t.quantity AS qty
-          FROM finale_transfers t
-          JOIN finale_facilities fto ON fto.facility_url = t.facility_to
-          WHERE fto.facility_name LIKE '${FACILITY_PREFIX}%'
-          UNION ALL
-          -- Transfers OUT from SFS bins (to anywhere)
-          SELECT t.product_id, t.facility_from AS facility_url, -t.quantity AS qty
-          FROM finale_transfers t
-          JOIN finale_facilities ffrom ON ffrom.facility_url = t.facility_from
-          WHERE ffrom.facility_name LIKE '${FACILITY_PREFIX}%'
-          UNION ALL
-          -- Builds: consumed materials at SFS facilities
-          SELECT bl.product_id, bl.facility_url, -bl.quantity AS qty
-          FROM finale_build_lines bl
-          JOIN finale_builds b ON b.work_effort_id = bl.work_effort_id
-          JOIN finale_facilities bf ON bf.facility_url = bl.facility_url
-          WHERE bl.line_type = 'consume' AND bf.facility_name LIKE '${FACILITY_PREFIX}%'
-          UNION ALL
-          -- Builds: produced goods at SFS facilities
-          SELECT bl.product_id, bl.facility_url, bl.quantity AS qty
-          FROM finale_build_lines bl
-          JOIN finale_builds b ON b.work_effort_id = bl.work_effort_id
-          JOIN finale_facilities bf ON bf.facility_url = bl.facility_url
-          WHERE bl.line_type = 'produce' AND bf.facility_name LIKE '${FACILITY_PREFIX}%'
-        )
-        GROUP BY product_id, facility_url
-        HAVING SUM(qty) != 0
-      ) s
-      LEFT JOIN finale_facilities f ON f.facility_url = s.facility_url
-      LEFT JOIN finale_products p ON p.product_id = s.product_id
-      WHERE (p.category IS NULL OR p.category NOT IN (${EXCLUDED_CATEGORIES.map(c => `'${c}'`).join(',')}))
-        AND (p.status IS NULL OR p.status != 'PRODUCT_INACTIVE')
+      SELECT ?, ?,
+             COALESCE((SELECT facility_name FROM finale_facilities WHERE facility_url = ?), ?),
+             COALESCE((SELECT internal_name FROM finale_products WHERE product_id = ?), ?),
+             ?, datetime('now')
     `)
+    const upsert = db.transaction((rows: typeof levels) => {
+      for (const l of rows) {
+        if (!l.productId || !l.facilityUrl) continue
+        const qty = Number(l.qtyOnHand ?? 0)
+        if (qty === 0) continue
+        ins.run(l.productId, l.facilityUrl, l.facilityUrl, l.facilityUrl, l.productId, l.productId, qty)
+      }
+    })
+    upsert(levels)
     stockLevelCount = (db.prepare(`SELECT COUNT(*) as c FROM computed_stock`).get() as { c: number }).c
   } catch (err) {
-    errors.push(`Transfers: ${(err as Error).message}`)
+    errors.push(`Stock levels: ${(err as Error).message}`)
   }
 
   // 6. Run automated detection rules

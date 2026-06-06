@@ -165,6 +165,21 @@ export async function fetchTransfers(): Promise<FinaleTransfer[]> {
   return columnarToRows<FinaleTransfer>(data)
 }
 
+export interface FinaleInventoryLevel {
+  productId: string
+  productUrl: string
+  facilityUrl: string
+  qtyOnHand: number
+  qtyAvailable: number
+  qtyReserved: number
+  [key: string]: unknown
+}
+
+export async function fetchInventoryLevels(): Promise<FinaleInventoryLevel[]> {
+  const data = await finaleGet<Record<string, unknown[]>>('inventorylevel')
+  return columnarToRows<FinaleInventoryLevel>(data)
+}
+
 // ── Connection test ──
 
 export async function testConnection(): Promise<{ ok: boolean; account: string; productCount?: number; facilityCount?: number; error?: string }> {

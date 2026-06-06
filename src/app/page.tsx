@@ -38,7 +38,7 @@ interface ListData {
 const REFRESH_INTERVAL = 30_000
 
 export default function Dashboard() {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'reconcile'>('dashboard')
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'reconcile' | 'cyclecount'>('dashboard')
   const [statsData, setStatsData] = useState<StatsData | null>(null)
   const [listData, setListData] = useState<ListData | null>(null)
   const [loading, setLoading] = useState(true)
@@ -136,6 +136,14 @@ export default function Dashboard() {
           >
             <Shield className="w-3.5 h-3.5 inline mr-1.5 -mt-0.5" />Reconcile
           </button>
+          <button
+            onClick={() => setActiveTab('cyclecount')}
+            className={cn('px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wide transition-colors',
+              activeTab === 'cyclecount' ? 'bg-orange-500/15 text-orange-400' : 'text-orange-800 hover:text-orange-400'
+            )}
+          >
+            <ClipboardCheck className="w-3.5 h-3.5 inline mr-1.5 -mt-0.5" />Cycle Count
+          </button>
         </div>
 
         <div className="flex-1" />
@@ -146,10 +154,7 @@ export default function Dashboard() {
             {stats.total_critical} Critical
           </div>
         )}
-        <button onClick={() => setShowCycleCount(true)} className="btn-primary text-xs">
-          <Shield className="w-4 h-4" /> Cycle Count
-        </button>
-        <button onClick={() => setShowSheets(true)} className="btn text-xs bg-orange-600/20 text-orange-400 border border-orange-600/30 hover:bg-orange-600/30">
+<button onClick={() => setShowSheets(true)} className="btn text-xs bg-orange-600/20 text-orange-400 border border-orange-600/30 hover:bg-orange-600/30">
           <FileSpreadsheet className="w-4 h-4" /> Counts
         </button>
         <button onClick={() => setShowValidation(true)} className="btn-ghost text-xs">
@@ -174,6 +179,8 @@ export default function Dashboard() {
 
       {activeTab === 'reconcile' ? (
         <ReconcileTab />
+      ) : activeTab === 'cyclecount' ? (
+        <CycleCountPanel onClose={() => setActiveTab('dashboard')} inline />
       ) : (
       <div className="flex flex-1 overflow-hidden">
         {/* Sidebar */}

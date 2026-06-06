@@ -5,7 +5,7 @@ import {
   X, Search, MapPin, Package, CheckCircle2, AlertTriangle,
   ChevronRight, ClipboardCheck, Play, RefreshCw,
   Check, XCircle, Minus, Plus, ChevronLeft, Trash2,
-  RotateCcw, Shield, ShieldCheck, ShieldAlert, BarChart2
+  RotateCcw, Shield, ShieldCheck, ShieldAlert, BarChart2, Download
 } from 'lucide-react'
 import { cn, fmtDelta } from '@/lib/utils'
 
@@ -34,13 +34,20 @@ interface CountDetail {
 
 type View = 'progress' | 'bins' | 'counting'
 
-export default function CycleCountPanel({ onClose }: { onClose: () => void }) {
+export default function CycleCountPanel({ onClose, inline }: { onClose: () => void; inline?: boolean }) {
   const [view, setView] = useState<View>('progress')
   const [activeCountId, setActiveCountId] = useState<number | null>(null)
 
+  const wrapper = inline
+    ? 'flex flex-col flex-1 overflow-hidden'
+    : 'fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm'
+  const inner = inline
+    ? 'flex flex-col flex-1 overflow-hidden'
+    : 'bg-[#0d0a07] border border-orange-900/30 rounded-2xl w-full max-w-5xl max-h-[90vh] flex flex-col shadow-2xl'
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-      <div className="bg-[#0d0a07] border border-orange-900/30 rounded-2xl w-full max-w-5xl max-h-[90vh] flex flex-col shadow-2xl">
+    <div className={wrapper}>
+      <div className={inner}>
         <div className="flex items-center justify-between px-6 py-4 border-b border-orange-900/30">
           <div className="flex items-center gap-3">
             <Shield className="w-5 h-5 text-orange-500" />
@@ -54,8 +61,12 @@ export default function CycleCountPanel({ onClose }: { onClose: () => void }) {
             <button onClick={() => setView('bins')} className={cn('btn-ghost text-xs', view === 'bins' && 'text-orange-400 bg-orange-500/10')}>
               <MapPin className="w-3.5 h-3.5" /> Bins
             </button>
-            <div className="w-px h-6 bg-orange-900/30 mx-1" />
-            <button onClick={onClose} className="btn-ghost w-8 h-8 p-0 justify-center"><X className="w-4 h-4" /></button>
+            {!inline && (
+              <>
+                <div className="w-px h-6 bg-orange-900/30 mx-1" />
+                <button onClick={onClose} className="btn-ghost w-8 h-8 p-0 justify-center"><X className="w-4 h-4" /></button>
+              </>
+            )}
           </div>
         </div>
 
@@ -75,8 +86,26 @@ export default function CycleCountPanel({ onClose }: { onClose: () => void }) {
 
 function ProgressView({ onSelectBin, onOpenCount }: { onSelectBin: (bin: string) => void; onOpenCount: (id: number) => void }) {
   const [data, setData] = useState<ProgressData | null>(null)
+  const [importing, setImporting] = useState(false)
+  const [importResult, setImportResult] = useState<{ ok: boolean; binsCreated?: number; binsReused?: number; linesImported?: number; error?: string } | null>(null)
 
   useEffect(() => { fetch('/api/cyclecount?view=progress').then(r => r.json()).then(setData) }, [])
+
+  const importFromFinale = async () => {
+    setImporting(true)
+    setImportResult(null)
+    const res = await fetch('/api/cyclecount/import-finale', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ counted_by: 'Finale Import', racks: 'ABCDEFGHIJ' }),
+    })
+    const result = await res.json()
+    setImportResult(result)
+    setImporting(false)
+    if (result.ok) {
+      fetch('/api/cyclecount?view=progress').then(r => r.json()).then(setData)
+    }
+  }
 
   if (!data) return <div className="p-12 text-center text-orange-800 text-sm">Loading...</div>
 
@@ -84,6 +113,30 @@ function ProgressView({ onSelectBin, onOpenCount }: { onSelectBin: (bin: string)
 
   return (
     <div className="p-6 flex flex-col gap-6">
+      {/* Import from Finale */}
+      <div className="card p-5 flex items-center justify-between gap-4">
+        <div>
+          <p className="text-sm font-bold text-white">Import from Finale</p>
+          <p className="text-xs text-orange-700 mt-0.5">Pull all current stock from Racks A–J into cycle count sessions</p>
+          {importResult && (
+            <p className={cn('text-xs mt-1.5 font-medium', importResult.ok ? 'text-emerald-400' : 'text-red-400')}>
+              {importResult.ok
+                ? `✓ ${importResult.linesImported} items across ${importResult.binsCreated! + importResult.binsReused!} bins imported`
+                : `✗ ${importResult.error}`}
+            </p>
+          )}
+        </div>
+        <button
+          onClick={importFromFinale}
+          disabled={importing}
+          className="btn-primary text-xs shrink-0 disabled:opacity-50"
+        >
+          {importing
+            ? <><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Importing…</>
+            : <><Download className="w-3.5 h-3.5" /> Import Racks A–J</>}
+        </button>
+      </div>
+
       {/* Overall progress */}
       <div className="card p-5">
         <div className="flex items-center justify-between mb-4">
@@ -174,7 +227,12 @@ function BinListView({ onStartCount }: { onStartCount: (id: number) => void }) {
   const [rackFilter, setRackFilter] = useState('')
 
   useEffect(() => {
-    fetch('/api/cyclecount?view=bins').then(r => r.json()).then(d => { setBins(d.bins || []); setLoading(false) })
+    fetch('/api/cyclecount?view=bins').then(r => r.json()).then(d => {
+      const raw: BinInfo[] = d.bins || []
+      const seen = new Set<string>()
+      setBins(raw.filter(b => { if (seen.has(b.bin_name)) return false; seen.add(b.bin_name); return true }))
+      setLoading(false)
+    })
   }, [])
 
   const startCount = async (bin: string, type: 'hard_count' | 'follow_up') => {

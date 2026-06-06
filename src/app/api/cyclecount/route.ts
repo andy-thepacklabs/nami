@@ -67,25 +67,29 @@ export async function GET(req: NextRequest) {
   }
 
   if (view === 'progress') {
-    const totalBins = (db.prepare("SELECT COUNT(DISTINCT facility_name) as c FROM finale_facilities WHERE facility_name LIKE 'SFS-_-__-__-%' AND status != 'FACILITY_INACTIVE'").get() as {c:number}).c
+    let totalBins = 0, racks: unknown[] = []
+    try {
+      totalBins = (db.prepare("SELECT COUNT(DISTINCT facility_name) as c FROM finale_facilities WHERE facility_name LIKE 'SFS-_-__-__-%' AND status != 'FACILITY_INACTIVE'").get() as {c:number}).c
+      racks = db.prepare(`
+        SELECT SUBSTR(f.facility_name, 5, 1) AS rack,
+          COUNT(DISTINCT f.facility_name) AS total_bins,
+          COUNT(DISTINCT ti.bin_name) AS counted_bins
+        FROM finale_facilities f
+        LEFT JOIN trusted_inventory ti ON ti.bin_name = f.facility_name
+        WHERE f.facility_name LIKE 'SFS-_-__-__-%' AND f.status != 'FACILITY_INACTIVE'
+        GROUP BY SUBSTR(f.facility_name, 5, 1)
+        ORDER BY rack
+      `).all()
+    } catch { /* finale_facilities not synced yet */ }
+
     const countedBins = (db.prepare("SELECT COUNT(DISTINCT bin_name) as c FROM trusted_inventory").get() as {c:number}).c
     const totalTrusted = (db.prepare("SELECT COUNT(*) as c FROM trusted_inventory").get() as {c:number}).c
     const recentCounts = db.prepare(`
       SELECT cc.*,
         (SELECT COUNT(*) FROM cycle_count_lines cl WHERE cl.count_id = cc.id) AS line_count
-      FROM cycle_counts cc ORDER BY cc.started_at DESC LIMIT 10
-    `).all()
-
-    // By rack
-    const racks = db.prepare(`
-      SELECT SUBSTR(f.facility_name, 5, 1) AS rack,
-        COUNT(DISTINCT f.facility_name) AS total_bins,
-        COUNT(DISTINCT ti.bin_name) AS counted_bins
-      FROM finale_facilities f
-      LEFT JOIN trusted_inventory ti ON ti.bin_name = f.facility_name
-      WHERE f.facility_name LIKE 'SFS-_-__-__-%' AND f.status != 'FACILITY_INACTIVE'
-      GROUP BY SUBSTR(f.facility_name, 5, 1)
-      ORDER BY rack
+      FROM cycle_counts cc
+      WHERE cc.bin_name LIKE 'SFS-%'
+      ORDER BY cc.started_at DESC LIMIT 10
     `).all()
 
     return NextResponse.json({ totalBins, countedBins, totalTrusted, recentCounts, racks })

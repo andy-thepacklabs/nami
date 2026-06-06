@@ -73,7 +73,12 @@ function SelectBin({ onStart }: { onStart: (id: number) => void }) {
     Promise.all([
       fetch('/api/reconcile?view=bins').then(r => r.json()),
       fetch('/api/reconcile?view=progress').then(r => r.json()),
-    ]).then(([b, p]) => { setBins(b.bins || []); setProgress(p); setLoading(false) })
+    ]).then(([b, p]) => {
+      const raw: BinInfo[] = b.bins || []
+      const seen = new Set<string>()
+      setBins(raw.filter(bin => { if (seen.has(bin.bin_name)) return false; seen.add(bin.bin_name); return true }))
+      setProgress(p); setLoading(false)
+    })
   }, [])
 
   const start = async (bin: string) => {

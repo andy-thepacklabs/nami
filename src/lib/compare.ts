@@ -29,6 +29,29 @@ export function compareWithFinale(sheetRows: SheetRow[]): ComparisonResult {
   const db = getDb()
   const lines: ComparisonLine[] = []
 
+  const productIds = [...new Set(sheetRows.map(r => r.productId))]
+  const binLocations = [...new Set(sheetRows.map(r => r.binLocation).filter(Boolean))]
+
+  // Bulk-load all relevant computed_stock rows in one query
+  const stockMap = new Map<string, { net_qty: number; product_name: string }>()
+  if (binLocations.length > 0) {
+    const binPlaceholders = binLocations.map(() => '?').join(',')
+    const stockRows = db.prepare(`
+      SELECT cs.product_id, cs.facility_name, cs.net_qty, cs.product_name
+      FROM computed_stock cs
+      WHERE cs.facility_name IN (${binPlaceholders})
+    `).all(...binLocations) as { product_id: string; facility_name: string; net_qty: number; product_name: string }[]
+    for (const r of stockRows) stockMap.set(`${r.product_id}::${r.facility_name}`, { net_qty: r.net_qty, product_name: r.product_name })
+  }
+
+  // Bulk-load product names
+  const nameMap = new Map<string, string>()
+  if (productIds.length > 0) {
+    const idPlaceholders = productIds.map(() => '?').join(',')
+    const prodRows = db.prepare(`SELECT product_id, internal_name FROM finale_products WHERE product_id IN (${idPlaceholders})`).all(...productIds) as { product_id: string; internal_name: string }[]
+    for (const r of prodRows) nameMap.set(r.product_id, r.internal_name)
+  }
+
   // Build a set of product+bin combos from the sheet
   const counted = new Set<string>()
 
@@ -36,27 +59,9 @@ export function compareWithFinale(sheetRows: SheetRow[]): ComparisonResult {
     const key = `${row.productId}::${row.binLocation}`
     counted.add(key)
 
-    // Look up Finale's computed stock for this product at this bin
-    let finaleQty = 0
-    let productName: string | null = null
-
-    if (row.binLocation) {
-      const stock = db.prepare(`
-        SELECT cs.net_qty, cs.product_name
-        FROM computed_stock cs
-        WHERE cs.product_id = ? AND cs.facility_name = ?
-      `).get(row.productId, row.binLocation) as { net_qty: number; product_name: string } | undefined
-
-      if (stock) {
-        finaleQty = Math.round(stock.net_qty)
-        productName = stock.product_name
-      }
-    }
-
-    if (!productName) {
-      const prod = db.prepare('SELECT internal_name FROM finale_products WHERE product_id = ?').get(row.productId) as { internal_name: string } | undefined
-      productName = prod?.internal_name ?? null
-    }
+    const stock = stockMap.get(key)
+    const finaleQty = stock ? Math.round(stock.net_qty) : 0
+    const productName = stock?.product_name || nameMap.get(row.productId) || null
 
     const variance = row.physicalCount - finaleQty
     const variancePct = finaleQty !== 0 ? (variance / Math.abs(finaleQty)) * 100 : (row.physicalCount > 0 ? 100 : 0)
@@ -78,28 +83,20 @@ export function compareWithFinale(sheetRows: SheetRow[]): ComparisonResult {
   }
 
   // Find items in Finale stock at counted bins that weren't on the sheet
-  const countedBins = [...new Set(sheetRows.map(r => r.binLocation).filter(Boolean))]
-  for (const bin of countedBins) {
-    const finaleStock = db.prepare(`
-      SELECT cs.product_id, cs.product_name, cs.net_qty
-      FROM computed_stock cs
-      WHERE cs.facility_name = ? AND cs.net_qty > 0
-    `).all(bin) as { product_id: string; product_name: string; net_qty: number }[]
-
-    for (const fs of finaleStock) {
-      const key = `${fs.product_id}::${bin}`
-      if (!counted.has(key)) {
-        lines.push({
-          productId: fs.product_id,
-          productName: fs.product_name,
-          binLocation: bin,
-          finaleQty: Math.round(fs.net_qty),
-          physicalCount: 0,
-          variance: -Math.round(fs.net_qty),
-          variancePct: -100,
-          status: 'not_counted',
-        })
-      }
+  for (const [key, stock] of stockMap) {
+    if (stock.net_qty <= 0) continue
+    const [productId, bin] = key.split('::')
+    if (!counted.has(key)) {
+      lines.push({
+        productId,
+        productName: stock.product_name,
+        binLocation: bin,
+        finaleQty: Math.round(stock.net_qty),
+        physicalCount: 0,
+        variance: -Math.round(stock.net_qty),
+        variancePct: -100,
+        status: 'not_counted',
+      })
     }
   }
 
