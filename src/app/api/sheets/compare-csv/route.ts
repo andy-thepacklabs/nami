@@ -58,52 +58,48 @@ export async function POST(req: NextRequest) {
   if (pPidCol === -1) return NextResponse.json({ error: `Physical count CSV missing Product ID column. Found: [${ph.join(', ')}]` }, { status: 400 })
   if (pCountCol === -1) return NextResponse.json({ error: `Physical count CSV missing count column. Found: [${ph.join(', ')}]. Need a column with "count", "qty", or "quantity".` }, { status: 400 })
 
-  // Build Finale map: productId+bin -> { qoh, name }
-  // Finale export may have sub-rows per bin location — aggregate QoH per product+bin
+  // Build Finale map keyed by productId only (Finale CSV has one row per product, total QoH)
   const finaleMap = new Map<string, { qoh: number; name: string }>()
   for (const row of fr) {
     const pid = row[fPidCol]?.trim()
     if (!pid) continue
-    const bin = fBinCol >= 0 ? (row[fBinCol]?.trim() || '') : ''
     const qohRaw = row[fQohCol]?.replace(/,/g, '').trim()
     const qoh = parseFloat(qohRaw)
-    if (!pid || isNaN(qoh)) continue
-    const key = `${pid}::${bin}`
-    const existing = finaleMap.get(key)
-    if (existing) {
-      existing.qoh += qoh
-    } else {
-      finaleMap.set(key, { qoh, name: fNameCol >= 0 ? (row[fNameCol] || pid) : pid })
-    }
+    if (isNaN(qoh)) continue
+    const name = fNameCol >= 0 ? (row[fNameCol]?.trim() || pid) : pid
+    const existing = finaleMap.get(pid)
+    if (existing) { existing.qoh += qoh } else { finaleMap.set(pid, { qoh, name }) }
   }
 
-  // Build physical map: productId+bin -> count
-  const physicalMap = new Map<string, number>()
+  // Build physical map keyed by productId only (sum across all bins per product)
+  // Also track all bin locations per product for display
+  const physicalMap = new Map<string, { total: number; bins: string[] }>()
   for (const row of pr) {
     const pid = row[pPidCol]?.trim()
     if (!pid) continue
     const bin = pBinCol >= 0 ? (row[pBinCol]?.trim() || '') : ''
     const countRaw = row[pCountCol]?.replace(/,/g, '').trim()
     const count = parseFloat(countRaw)
-    if (!pid || isNaN(count)) continue
-    const key = `${pid}::${bin}`
-    physicalMap.set(key, (physicalMap.get(key) || 0) + count)
+    if (isNaN(count)) continue
+    const existing = physicalMap.get(pid)
+    if (existing) {
+      existing.total += count
+      if (bin && !existing.bins.includes(bin)) existing.bins.push(bin)
+    } else {
+      physicalMap.set(pid, { total: count, bins: bin ? [bin] : [] })
+    }
   }
 
-  // Build comparison lines
+  // Build comparison lines — one row per product
   type Status = 'match' | 'variance' | 'not_in_finale' | 'not_counted'
   interface Line {
     productId: string; productName: string; binLocation: string
     finaleQty: number; physicalCount: number; variance: number; variancePct: number; status: Status
   }
   const lines: Line[] = []
-  const seen = new Set<string>()
 
-  // Items in physical count
-  for (const [key, physCount] of physicalMap) {
-    seen.add(key)
-    const [pid, bin] = key.split('::')
-    const finale = finaleMap.get(key)
+  for (const [pid, { total: physCount, bins }] of physicalMap) {
+    const finale = finaleMap.get(pid)
     const finaleQty = finale ? Math.round(finale.qoh) : 0
     const productName = finale?.name || pid
     const variance = physCount - finaleQty
@@ -111,17 +107,10 @@ export async function POST(req: NextRequest) {
     let status: Status = 'match'
     if (finaleQty === 0 && physCount > 0) status = 'not_in_finale'
     else if (variance !== 0) status = 'variance'
-    lines.push({ productId: pid, productName, binLocation: bin, finaleQty, physicalCount: physCount, variance, variancePct, status })
+    lines.push({ productId: pid, productName, binLocation: bins.join(', '), finaleQty, physicalCount: physCount, variance, variancePct, status })
   }
 
-  // Items in Finale not counted
-  for (const [key, { qoh, name }] of finaleMap) {
-    if (seen.has(key) || qoh <= 0) continue
-    const [pid, bin] = key.split('::')
-    lines.push({ productId: pid, productName: name, binLocation: bin, finaleQty: Math.round(qoh), physicalCount: 0, variance: -Math.round(qoh), variancePct: -100, status: 'not_counted' })
-  }
-
-  const order = { variance: 0, not_counted: 1, not_in_finale: 2, match: 3 }
+  const order = { variance: 0, not_in_finale: 1, match: 2, not_counted: 3 }
   lines.sort((a, b) => order[a.status] - order[b.status] || Math.abs(b.variance) - Math.abs(a.variance))
 
   const matched = lines.filter(l => l.status === 'match').length

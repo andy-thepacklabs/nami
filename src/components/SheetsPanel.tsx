@@ -59,15 +59,14 @@ export default function SheetsPanel({ onClose, onVariancesFound }: {
   const [filter, setFilter] = useState<FilterKey>('all')
 
   const runCompareImport = async () => {
-    if (!finaleFile || !physicalFile || !countedBy.trim()) return
+    if (!physicalFile || !countedBy.trim()) return
     setImporting(true)
     setImportError('')
     try {
       const form = new FormData()
-      form.append('finaleFile', finaleFile)
       form.append('physicalFile', physicalFile)
       form.append('countedBy', countedBy.trim())
-      const res = await fetch('/api/sheets/compare-csv', { method: 'POST', body: form })
+      const res = await fetch('/api/sheets/compare-finale', { method: 'POST', body: form })
       const data = await res.json()
       if (data.error) {
         setImportError(data.error)
@@ -210,39 +209,16 @@ export default function SheetsPanel({ onClose, onVariancesFound }: {
 
               {inputMode === 'compare' ? (
                 <>
-                  {/* Finale export */}
-                  <div>
-                    <label className="text-[10px] font-bold text-orange-700 uppercase tracking-[0.2em] block mb-2">
-                      Finale Export CSV <span className="text-orange-900 normal-case font-normal">(Stock → Export)</span>
-                    </label>
-                    <div
-                      onDragOver={e => { e.preventDefault(); setDragOver(true) }}
-                      onDragLeave={() => setDragOver(false)}
-                      onDrop={e => { e.preventDefault(); setDragOver(false); const f = e.dataTransfer.files[0]; if (f) setFinaleFile(f) }}
-                      onClick={() => document.getElementById('finale-upload')?.click()}
-                      className={cn('border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-colors',
-                        finaleFile ? 'border-emerald-500/40 bg-emerald-500/5' : 'border-orange-900/40 hover:border-orange-700/60'
-                      )}
-                    >
-                      <input id="finale-upload" type="file" accept=".csv" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) setFinaleFile(f) }} />
-                      {finaleFile ? (
-                        <div className="flex items-center justify-center gap-2 text-emerald-400">
-                          <CheckCircle2 className="w-4 h-4" />
-                          <span className="text-sm font-medium">{finaleFile.name}</span>
-                          <span className="text-xs text-orange-700">({Math.round(finaleFile.size / 1024)}KB)</span>
-                        </div>
-                      ) : (
-                        <div>
-                          <Download className="w-6 h-6 text-orange-800 mx-auto mb-1" />
-                          <p className="text-sm text-orange-600 font-medium">Drop Finale export CSV here</p>
-                          <p className="text-xs text-orange-900 mt-0.5">Needs: Product ID + QoH columns</p>
-                        </div>
-                      )}
+                  {/* Finale live fetch notice */}
+                  <div className="card p-4 flex items-center gap-3 border-orange-500/20 bg-orange-500/5">
+                    <RefreshCw className="w-4 h-4 text-orange-400 shrink-0" />
+                    <div>
+                      <p className="text-xs font-bold text-orange-300">Finale data fetched live</p>
+                      <p className="text-[10px] text-orange-700 mt-0.5">Current QoH is pulled directly from Finale API when you click Compare — no export needed.</p>
                     </div>
-                    {finaleFile && <button onClick={() => setFinaleFile(null)} className="text-[10px] text-orange-700 hover:text-orange-400 mt-1">Remove</button>}
                   </div>
 
-                  {/* Physical count */}
+                  {/* Physical count upload */}
                   <div>
                     <label className="text-[10px] font-bold text-orange-700 uppercase tracking-[0.2em] block mb-2">
                       Physical Count CSV <span className="text-orange-900 normal-case font-normal">(your cycle count sheet)</span>
@@ -251,22 +227,22 @@ export default function SheetsPanel({ onClose, onVariancesFound }: {
                       onDragOver={e => { e.preventDefault() }}
                       onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) setPhysicalFile(f) }}
                       onClick={() => document.getElementById('physical-upload')?.click()}
-                      className={cn('border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-colors',
+                      className={cn('border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-colors',
                         physicalFile ? 'border-emerald-500/40 bg-emerald-500/5' : 'border-orange-900/40 hover:border-orange-700/60'
                       )}
                     >
                       <input id="physical-upload" type="file" accept=".csv" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) setPhysicalFile(f) }} />
                       {physicalFile ? (
                         <div className="flex items-center justify-center gap-2 text-emerald-400">
-                          <CheckCircle2 className="w-4 h-4" />
+                          <CheckCircle2 className="w-5 h-5" />
                           <span className="text-sm font-medium">{physicalFile.name}</span>
                           <span className="text-xs text-orange-700">({Math.round(physicalFile.size / 1024)}KB)</span>
                         </div>
                       ) : (
                         <div>
-                          <Upload className="w-6 h-6 text-orange-800 mx-auto mb-1" />
-                          <p className="text-sm text-orange-600 font-medium">Drop physical count CSV here</p>
-                          <p className="text-xs text-orange-900 mt-0.5">Needs: Product ID + Count columns</p>
+                          <Upload className="w-8 h-8 text-orange-800 mx-auto mb-2" />
+                          <p className="text-sm text-orange-600 font-medium">Drop physical count CSV here or click to browse</p>
+                          <p className="text-xs text-orange-900 mt-0.5">Columns: Product ID, Bin Location, Physical Count</p>
                         </div>
                       )}
                     </div>
@@ -281,11 +257,11 @@ export default function SheetsPanel({ onClose, onVariancesFound }: {
 
                   <button
                     onClick={runCompareImport}
-                    disabled={importing || !finaleFile || !physicalFile || !countedBy.trim()}
+                    disabled={importing || !physicalFile || !countedBy.trim()}
                     className="btn-primary text-xs"
                   >
                     {importing ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <ArrowRight className="w-3.5 h-3.5" />}
-                    {importing ? 'Comparing...' : 'Compare Finale vs Physical'}
+                    {importing ? 'Fetching Finale & Comparing...' : 'Compare vs Finale'}
                   </button>
                 </>
               ) : inputMode === 'csv' ? (
