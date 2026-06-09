@@ -39,8 +39,30 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Both files are required' }, { status: 400 })
   }
 
+  // Helper: detect Excel/ZIP magic bytes (PK\x03\x04)
+  function isZipFile(bytes: Uint8Array) { return bytes[0] === 0x50 && bytes[1] === 0x4B }
+  function isExcelName(name: string) { const n = name.toLowerCase(); return n.endsWith('.xlsx') || n.endsWith('.xls') }
+
+  // Check Finale file
+  if (isExcelName(finaleFile.name)) {
+    return NextResponse.json({ error: 'Finale file is an Excel file (.xlsx/.xls). In Finale, export as CSV: Actions → Export → CSV format.' }, { status: 400 })
+  }
+  const finaleBytes = await finaleFile.arrayBuffer()
+  if (isZipFile(new Uint8Array(finaleBytes.slice(0, 4)))) {
+    return NextResponse.json({ error: 'Finale file appears to be an Excel/ZIP file. Please export as CSV format from Finale.' }, { status: 400 })
+  }
+
+  // Check Physical file
+  if (isExcelName(physicalFile.name)) {
+    return NextResponse.json({ error: 'Physical count file is an Excel file (.xlsx/.xls). Please save/export as CSV.' }, { status: 400 })
+  }
+  const physBytes = await physicalFile.arrayBuffer()
+  if (isZipFile(new Uint8Array(physBytes.slice(0, 4)))) {
+    return NextResponse.json({ error: 'Physical count file appears to be an Excel/ZIP file. Please save/export as CSV.' }, { status: 400 })
+  }
+
   // Parse Finale CSV — needs Product ID and QoH
-  const { headers: fh, rows: fr } = parseCSV(await finaleFile.text())
+  const { headers: fh, rows: fr } = parseCSV(new TextDecoder().decode(finaleBytes))
   const fPidCol = findCol(fh, 'product id', 'product_id', 'productid', 'sku', 'item')
   const fQohCol = findCol(fh, 'qoh', 'qty on hand', 'qty_on_hand', 'quantity on hand', 'on hand', 'onhand')
   const fBinCol = findCol(fh, 'bin', 'location', 'sublocation', 'sub-location')
@@ -50,7 +72,7 @@ export async function POST(req: NextRequest) {
   if (fQohCol === -1) return NextResponse.json({ error: `Finale CSV missing QoH column. Found: [${fh.join(', ')}]. Need a column with "qoh", "qty on hand", or "on hand".` }, { status: 400 })
 
   // Parse physical count CSV — needs Product ID and count
-  const { headers: ph, rows: pr } = parseCSV(await physicalFile.text())
+  const { headers: ph, rows: pr } = parseCSV(new TextDecoder().decode(physBytes))
   const pPidCol = findCol(ph, 'product id', 'product_id', 'productid', 'sku', 'item')
   const pCountCol = findCol(ph, 'count', 'qty', 'quantity', 'physical', 'actual')
   const pBinCol = findCol(ph, 'bin', 'location', 'rack')

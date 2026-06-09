@@ -45,7 +45,23 @@ export async function POST(req: NextRequest) {
   const file = formData.get('file') as File | null
   if (!file) return NextResponse.json({ error: 'No file provided' }, { status: 400 })
 
-  const { headers, rows } = parseCSV(await file.text())
+  // Reject Excel/ZIP files early — XLSX files are ZIP archives (magic bytes PK\x03\x04)
+  const isXlsx = file.name.toLowerCase().endsWith('.xlsx') || file.name.toLowerCase().endsWith('.xls')
+  if (isXlsx) {
+    return NextResponse.json({
+      error: 'Excel files (.xlsx/.xls) are not supported. In Finale, export as CSV: Actions → Export → CSV format.'
+    }, { status: 400 })
+  }
+  const rawBytes = await file.arrayBuffer()
+  const magic = new Uint8Array(rawBytes.slice(0, 4))
+  if (magic[0] === 0x50 && magic[1] === 0x4B) {
+    return NextResponse.json({
+      error: 'This file appears to be an Excel/ZIP file, not a CSV. In Finale, export as CSV: Actions → Export → CSV format.'
+    }, { status: 400 })
+  }
+
+  const text = new TextDecoder().decode(rawBytes)
+  const { headers, rows } = parseCSV(text)
 
   const pidCol  = findCol(headers, 'product id', 'product_id', 'productid', 'sku', 'item')
   const qohCol  = findCol(headers, 'stock: qoh', 'qoh', 'qty on hand', 'qty_on_hand', 'on hand', 'onhand')

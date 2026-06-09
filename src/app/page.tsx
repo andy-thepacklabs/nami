@@ -82,7 +82,7 @@ export default function Dashboard() {
     if (!silent) setRefreshing(false)
   }, [fetchStats, fetchList])
 
-  useEffect(() => { Promise.all([fetchStats(), fetchList()]).then(() => setLoading(false)) }, [fetchStats, fetchList])
+  useEffect(() => { fetchStats().then(() => setLoading(false)); fetchList() }, [fetchStats, fetchList])
   useEffect(() => { const id = setInterval(() => refresh(true), REFRESH_INTERVAL); return () => clearInterval(id) }, [refresh])
   useEffect(() => { setPage(1) }, [statusFilter, priorityFilter, binFilter, search])
 
@@ -128,41 +128,14 @@ export default function Dashboard() {
           >
             <BarChart2 className="w-3.5 h-3.5 inline mr-1.5 -mt-0.5" />Dashboard
           </button>
-          <button
-            onClick={() => setActiveTab('reconcile')}
-            className={cn('px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wide transition-colors',
-              activeTab === 'reconcile' ? 'bg-orange-500/15 text-orange-400' : 'text-orange-800 hover:text-orange-400'
-            )}
-          >
-            <Shield className="w-3.5 h-3.5 inline mr-1.5 -mt-0.5" />Reconcile
-          </button>
-          <button
-            onClick={() => setActiveTab('cyclecount')}
-            className={cn('px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wide transition-colors',
-              activeTab === 'cyclecount' ? 'bg-orange-500/15 text-orange-400' : 'text-orange-800 hover:text-orange-400'
-            )}
-          >
-            <ClipboardCheck className="w-3.5 h-3.5 inline mr-1.5 -mt-0.5" />Cycle Count
-          </button>
         </div>
 
         <div className="flex-1" />
 
-        {stats.total_critical > 0 && (
-          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-xs font-bold uppercase tracking-wide animate-pulse">
-            <Bell className="w-3.5 h-3.5" />
-            {stats.total_critical} Critical
-          </div>
-        )}
 <button onClick={() => setShowSheets(true)} className="btn text-xs bg-orange-600/20 text-orange-400 border border-orange-600/30 hover:bg-orange-600/30">
           <FileSpreadsheet className="w-4 h-4" /> Counts
         </button>
-        <button onClick={() => setShowValidation(true)} className="btn-ghost text-xs">
-          <ClipboardCheck className="w-4 h-4" /> Validate
-        </button>
-        <button onClick={() => setShowFinale(true)} className="btn-ghost text-xs">
-          <Database className="w-4 h-4" /> Finale
-        </button>
+
         <button onClick={() => setShowReport(true)} className="btn-ghost text-xs">
           <BarChart2 className="w-4 h-4" /> Report
         </button>

@@ -113,30 +113,6 @@ function ProgressView({ onSelectBin, onOpenCount }: { onSelectBin: (bin: string)
 
   return (
     <div className="p-6 flex flex-col gap-6">
-      {/* Import from Finale */}
-      <div className="card p-5 flex items-center justify-between gap-4">
-        <div>
-          <p className="text-sm font-bold text-white">Import from Finale</p>
-          <p className="text-xs text-orange-700 mt-0.5">Pull all current stock from Racks A–J into cycle count sessions</p>
-          {importResult && (
-            <p className={cn('text-xs mt-1.5 font-medium', importResult.ok ? 'text-emerald-400' : 'text-red-400')}>
-              {importResult.ok
-                ? `✓ ${importResult.linesImported} items across ${importResult.binsCreated! + importResult.binsReused!} bins imported`
-                : `✗ ${importResult.error}`}
-            </p>
-          )}
-        </div>
-        <button
-          onClick={importFromFinale}
-          disabled={importing}
-          className="btn-primary text-xs shrink-0 disabled:opacity-50"
-        >
-          {importing
-            ? <><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Importing…</>
-            : <><Download className="w-3.5 h-3.5" /> Import Racks A–J</>}
-        </button>
-      </div>
-
       {/* Overall progress */}
       <div className="card p-5">
         <div className="flex items-center justify-between mb-4">

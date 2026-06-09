@@ -79,8 +79,21 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Could not read Finale stock data. Upload your Finale CSV first.' }, { status: 500 })
   }
 
-  // Parse physical count CSV
-  const { headers: ph, rows: pr } = parseCSV(await physicalFile.text())
+  // Parse physical count CSV — reject Excel files early
+  const physName = physicalFile.name.toLowerCase()
+  if (physName.endsWith('.xlsx') || physName.endsWith('.xls')) {
+    return NextResponse.json({
+      error: 'Excel files (.xlsx/.xls) are not supported. Please export/save your physical count as a CSV file.'
+    }, { status: 400 })
+  }
+  const physBytes = await physicalFile.arrayBuffer()
+  const physMagic = new Uint8Array(physBytes.slice(0, 4))
+  if (physMagic[0] === 0x50 && physMagic[1] === 0x4B) {
+    return NextResponse.json({
+      error: 'The physical count file appears to be an Excel/ZIP file, not a CSV. Please export/save as CSV format.'
+    }, { status: 400 })
+  }
+  const { headers: ph, rows: pr } = parseCSV(new TextDecoder().decode(physBytes))
   const pPidCol   = findCol(ph, 'product id', 'product_id', 'productid', 'sku', 'item')
   const pCountCol = findCol(ph, 'count', 'qty', 'quantity', 'physical', 'actual')
   const pBinCol   = findCol(ph, 'bin', 'location', 'rack', 'sublocation')

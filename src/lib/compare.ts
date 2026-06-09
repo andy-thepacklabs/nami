@@ -32,9 +32,27 @@ export function compareWithFinale(sheetRows: SheetRow[]): ComparisonResult {
   const productIds = [...new Set(sheetRows.map(r => r.productId))]
   const binLocations = [...new Set(sheetRows.map(r => r.binLocation).filter(Boolean))]
 
-  // Bulk-load all relevant computed_stock rows in one query
+  // Bulk-load stock from finale_stock_csv (CSV-imported), fall back to computed_stock (API-synced)
   const stockMap = new Map<string, { net_qty: number; product_name: string }>()
-  if (binLocations.length > 0) {
+
+  // Try finale_stock_csv first (populated by CSV upload — no bin join, product-level only)
+  let useCsvStock = false
+  try {
+    const csvCount = (db.prepare(`SELECT COUNT(*) as c FROM finale_stock_csv`).get() as { c: number } | undefined)?.c ?? 0
+    useCsvStock = csvCount > 0
+  } catch { /* table may not exist yet */ }
+
+  if (useCsvStock) {
+    // finale_stock_csv has per-bin rows when bin_location is set, or product-level when empty
+    const rows = db.prepare(`SELECT product_id, bin_location, product_name, qoh FROM finale_stock_csv`).all() as
+      { product_id: string; bin_location: string; product_name: string; qoh: number }[]
+    for (const r of rows) {
+      // Store under both the specific bin key and a wildcard key (empty bin) for fallback matching
+      const key = `${r.product_id}::${r.bin_location}`
+      const existing = stockMap.get(key)
+      stockMap.set(key, { net_qty: (existing?.net_qty ?? 0) + r.qoh, product_name: r.product_name || r.product_id })
+    }
+  } else if (binLocations.length > 0) {
     const binPlaceholders = binLocations.map(() => '?').join(',')
     const stockRows = db.prepare(`
       SELECT cs.product_id, cs.facility_name, cs.net_qty, cs.product_name
@@ -59,7 +77,8 @@ export function compareWithFinale(sheetRows: SheetRow[]): ComparisonResult {
     const key = `${row.productId}::${row.binLocation}`
     counted.add(key)
 
-    const stock = stockMap.get(key)
+    // Try exact bin match first, then product-level (empty bin) as fallback
+    const stock = stockMap.get(key) ?? stockMap.get(`${row.productId}::`)
     const finaleQty = stock ? Math.round(stock.net_qty) : 0
     const productName = stock?.product_name || nameMap.get(row.productId) || null
 

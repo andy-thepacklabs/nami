@@ -14,22 +14,43 @@ function apiBase() {
   return `${BASE_URL}/${getAccount()}/api`
 }
 
-export async function finaleGet<T = unknown>(endpoint: string, params?: Record<string, string>): Promise<T> {
+export class FinaleUnavailableError extends Error {
+  constructor(endpoint: string, status: number) {
+    super(`Finale GET ${endpoint}: ${status} — endpoint not available for this account`)
+    this.name = 'FinaleUnavailableError'
+  }
+}
+
+export async function finaleGet<T = unknown>(endpoint: string, params?: Record<string, string>, timeoutMs = 30_000): Promise<T> {
   const url = new URL(`${apiBase()}/${endpoint}`)
   if (params) {
     for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v)
   }
 
-  const res = await fetch(url.toString(), {
-    headers: {
-      Authorization: getAuthHeader(),
-      Accept: 'application/json',
-      'User-Agent': 'Nami-Inventory/1.0',
-    },
-  })
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
 
-  if (!res.ok) throw new Error(`Finale GET ${endpoint}: ${res.status} ${res.statusText}`)
-  return res.json()
+  try {
+    const res = await fetch(url.toString(), {
+      headers: {
+        Authorization: getAuthHeader(),
+        Accept: 'application/json',
+        'User-Agent': 'Nami-Inventory/1.0',
+      },
+      signal: controller.signal,
+    })
+
+    if (res.status === 403 || res.status === 404) throw new FinaleUnavailableError(endpoint, res.status)
+    if (!res.ok) throw new Error(`Finale GET ${endpoint}: ${res.status} ${res.statusText}`)
+    return res.json()
+  } catch (err) {
+    if ((err as Error).name === 'AbortError') {
+      throw new Error(`Finale GET ${endpoint}: timed out after ${timeoutMs / 1000}s`)
+    }
+    throw err
+  } finally {
+    clearTimeout(timer)
+  }
 }
 
 // Finale returns columnar data: { key1: [val, val, ...], key2: [val, val, ...] }

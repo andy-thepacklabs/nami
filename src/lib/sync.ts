@@ -1,6 +1,7 @@
 import { getDb } from './db'
 import {
   fetchProducts, fetchFacilities, fetchShipments, fetchOrders, fetchTransfers, fetchWorkEfforts, fetchInventoryLevels,
+  FinaleUnavailableError,
   type FinaleProduct, type FinaleFacility, type FinaleWorkEffort
 } from './finale'
 import { runAllDetectionRules, type DetectionSummary } from './detection'
@@ -177,10 +178,29 @@ export async function runFullSync(): Promise<SyncResult> {
   const logResult = db.prepare(`INSERT INTO sync_log (sync_type) VALUES ('full')`).run()
   const syncLogId = logResult.lastInsertRowid
 
+  // Fetch all data from Finale in parallel (independent endpoints)
+  const [
+    productsResult,
+    facilitiesResult,
+    shipmentsResult,
+    ordersResult,
+    transfersResult,
+    buildsResult,
+    levelsResult,
+  ] = await Promise.allSettled([
+    fetchProducts(),
+    fetchFacilities(),
+    fetchShipments(),
+    fetchOrders(),
+    fetchTransfers(),
+    fetchWorkEfforts(),
+    fetchInventoryLevels(),
+  ])
+
   // 1. Sync products
   let productCount = 0
-  try {
-    const products = await fetchProducts()
+  if (productsResult.status === 'fulfilled') {
+    const products = productsResult.value
     const upsert = db.prepare(`
       INSERT OR REPLACE INTO finale_products
         (product_id, product_url, internal_name, status, product_type,
@@ -198,14 +218,14 @@ export async function runFullSync(): Promise<SyncResult> {
       )
     }
     productCount = products.length
-  } catch (err) {
-    errors.push(`Products: ${(err as Error).message}`)
+  } else {
+    errors.push(`Products: ${productsResult.reason?.message ?? productsResult.reason}`)
   }
 
   // 2. Sync facilities (locations/bins)
   let facilityCount = 0
-  try {
-    const facilities = await fetchFacilities()
+  if (facilitiesResult.status === 'fulfilled') {
+    const facilities = facilitiesResult.value
     const upsert = db.prepare(`
       INSERT OR REPLACE INTO finale_facilities
         (facility_id, facility_url, facility_name, facility_type, status, parent_url, raw_json, synced_at)
@@ -219,14 +239,14 @@ export async function runFullSync(): Promise<SyncResult> {
       )
     }
     facilityCount = facilities.length
-  } catch (err) {
-    errors.push(`Facilities: ${(err as Error).message}`)
+  } else {
+    errors.push(`Facilities: ${facilitiesResult.reason?.message ?? facilitiesResult.reason}`)
   }
 
   // 3. Sync shipments (may 403 with read-only API keys)
   let shipmentCount = 0
-  try {
-    const shipments = await fetchShipments()
+  if (shipmentsResult.status === 'fulfilled') {
+    const shipments = shipmentsResult.value
     const upsert = db.prepare(`
       INSERT OR REPLACE INTO finale_shipments
         (shipment_id, shipment_url, status, order_url, facility_url,
@@ -242,14 +262,15 @@ export async function runFullSync(): Promise<SyncResult> {
       )
     }
     shipmentCount = shipments.length
-  } catch (err) {
-    errors.push(`Shipments: ${(err as Error).message}`)
+  } else {
+    if (!(shipmentsResult.reason instanceof FinaleUnavailableError))
+      errors.push(`Shipments: ${shipmentsResult.reason?.message ?? shipmentsResult.reason}`)
   }
 
   // 4. Sync orders (may 403 with read-only API keys)
   let orderCount = 0
-  try {
-    const orders = await fetchOrders()
+  if (ordersResult.status === 'fulfilled') {
+    const orders = ordersResult.value
     const upsert = db.prepare(`
       INSERT OR REPLACE INTO finale_orders
         (order_id, order_url, status, order_type, order_date, raw_json, synced_at)
@@ -263,14 +284,15 @@ export async function runFullSync(): Promise<SyncResult> {
       )
     }
     orderCount = orders.length
-  } catch (err) {
-    errors.push(`Orders: ${(err as Error).message}`)
+  } else {
+    if (!(ordersResult.reason instanceof FinaleUnavailableError))
+      errors.push(`Orders: ${ordersResult.reason?.message ?? ordersResult.reason}`)
   }
 
   // 5. Sync inventory transfers
   let transferCount = 0
-  try {
-    const transfers = await fetchTransfers()
+  if (transfersResult.status === 'fulfilled') {
+    const transfers = transfersResult.value
     db.exec(`DELETE FROM finale_transfers`)
     const ins = db.prepare(`
       INSERT INTO finale_transfers
@@ -287,14 +309,15 @@ export async function runFullSync(): Promise<SyncResult> {
       )
     }
     transferCount = transfers.length
-  } catch (err) {
-    errors.push(`Transfers: ${(err as Error).message}`)
+  } else {
+    if (!(transfersResult.reason instanceof FinaleUnavailableError))
+      errors.push(`Transfers: ${transfersResult.reason?.message ?? transfersResult.reason}`)
   }
 
   // 6. Sync builds (work efforts) — consume + produce lines
   let buildCount = 0
-  try {
-    const builds = await fetchWorkEfforts()
+  if (buildsResult.status === 'fulfilled') {
+    const builds = buildsResult.value
     db.exec(`DELETE FROM finale_builds`)
     db.exec(`DELETE FROM finale_build_lines`)
 
@@ -336,14 +359,15 @@ export async function runFullSync(): Promise<SyncResult> {
       }
       buildCount++
     }
-  } catch (err) {
-    errors.push(`Builds: ${(err as Error).message}`)
+  } else {
+    if (!(buildsResult.reason instanceof FinaleUnavailableError))
+      errors.push(`Builds: ${buildsResult.reason?.message ?? buildsResult.reason}`)
   }
 
   // 7. Sync actual inventory levels from Finale (qty_on_hand per product+facility)
   let stockLevelCount = 0
-  try {
-    const levels = await fetchInventoryLevels()
+  if (levelsResult.status === 'fulfilled') {
+    const levels = levelsResult.value
     db.exec(`DELETE FROM computed_stock`)
     const ins = db.prepare(`
       INSERT INTO computed_stock (product_id, facility_url, facility_name, product_name, net_qty, synced_at)
@@ -362,8 +386,9 @@ export async function runFullSync(): Promise<SyncResult> {
     })
     upsert(levels)
     stockLevelCount = (db.prepare(`SELECT COUNT(*) as c FROM computed_stock`).get() as { c: number }).c
-  } catch (err) {
-    errors.push(`Stock levels: ${(err as Error).message}`)
+  } else {
+    if (!(levelsResult.reason instanceof FinaleUnavailableError))
+      errors.push(`Stock levels: ${levelsResult.reason?.message ?? levelsResult.reason}`)
   }
 
   // 6. Run automated detection rules
@@ -396,6 +421,99 @@ export async function runFullSync(): Promise<SyncResult> {
     errors,
     timestamp: new Date().toISOString(),
   }
+}
+
+// Lightweight sync — only fetches what the CSV compare needs (inventory levels + names)
+export async function runStockSync(): Promise<{ stockLevels: number; errors: string[]; timestamp: string }> {
+  const db = getDb()
+  const errors: string[] = []
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS finale_products (
+      product_id TEXT PRIMARY KEY, product_url TEXT NOT NULL, internal_name TEXT,
+      status TEXT, product_type TEXT, container_id TEXT, upc TEXT, cost REAL,
+      category TEXT, last_updated TEXT, created_date TEXT, raw_json TEXT,
+      synced_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE TABLE IF NOT EXISTS finale_facilities (
+      facility_id TEXT PRIMARY KEY, facility_url TEXT NOT NULL, facility_name TEXT NOT NULL,
+      facility_type TEXT, status TEXT, parent_url TEXT, raw_json TEXT,
+      synced_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE TABLE IF NOT EXISTS computed_stock (
+      product_id TEXT NOT NULL, facility_url TEXT NOT NULL, facility_name TEXT,
+      product_name TEXT, net_qty REAL DEFAULT 0,
+      synced_at TEXT NOT NULL DEFAULT (datetime('now')),
+      PRIMARY KEY (product_id, facility_url)
+    );
+    CREATE INDEX IF NOT EXISTS idx_cs_facility ON computed_stock(facility_url);
+    CREATE INDEX IF NOT EXISTS idx_cs_product  ON computed_stock(product_id);
+  `)
+
+  // Fetch only what we need — in parallel
+  const [productsResult, facilitiesResult, levelsResult] = await Promise.allSettled([
+    fetchProducts(),
+    fetchFacilities(),
+    fetchInventoryLevels(),
+  ])
+
+  if (productsResult.status === 'fulfilled') {
+    const upsert = db.prepare(`
+      INSERT OR REPLACE INTO finale_products
+        (product_id, product_url, internal_name, status, product_type,
+         container_id, upc, cost, category, last_updated, created_date, raw_json, synced_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+    `)
+    for (const p of productsResult.value) {
+      upsert.run(p.productId, p.productUrl, p.internalName ?? null, p.statusId ?? null,
+        p.productTypeId ?? null, p.containerId ?? null, p.universalProductCode ?? null,
+        p.cost ?? null, p.category ?? null, p.lastUpdatedDate ?? null, p.createdDate ?? null,
+        JSON.stringify(p))
+    }
+  } else {
+    errors.push(`Products: ${productsResult.reason?.message ?? productsResult.reason}`)
+  }
+
+  if (facilitiesResult.status === 'fulfilled') {
+    const upsert = db.prepare(`
+      INSERT OR REPLACE INTO finale_facilities
+        (facility_id, facility_url, facility_name, facility_type, status, parent_url, raw_json, synced_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+    `)
+    for (const f of facilitiesResult.value) {
+      upsert.run(f.facilityId, f.facilityUrl, f.facilityName, f.facilityTypeId ?? null,
+        f.statusId ?? null, f.parentFacilityUrl ?? null, JSON.stringify(f))
+    }
+  } else {
+    errors.push(`Facilities: ${facilitiesResult.reason?.message ?? facilitiesResult.reason}`)
+  }
+
+  let stockLevels = 0
+  if (levelsResult.status === 'fulfilled') {
+    const levels = levelsResult.value
+    db.exec(`DELETE FROM computed_stock`)
+    const ins = db.prepare(`
+      INSERT INTO computed_stock (product_id, facility_url, facility_name, product_name, net_qty, synced_at)
+      SELECT ?, ?,
+             COALESCE((SELECT facility_name FROM finale_facilities WHERE facility_url = ?), ?),
+             COALESCE((SELECT internal_name FROM finale_products WHERE product_id = ?), ?),
+             ?, datetime('now')
+    `)
+    const upsert = db.transaction((rows: typeof levels) => {
+      for (const l of rows) {
+        if (!l.productId || !l.facilityUrl) continue
+        const qty = Number(l.qtyOnHand ?? 0)
+        if (qty === 0) continue
+        ins.run(l.productId, l.facilityUrl, l.facilityUrl, l.facilityUrl, l.productId, l.productId, qty)
+      }
+    })
+    upsert(levels)
+    stockLevels = (db.prepare(`SELECT COUNT(*) as c FROM computed_stock`).get() as { c: number }).c
+  } else {
+    errors.push(`Stock levels: ${levelsResult.reason?.message ?? levelsResult.reason}`)
+  }
+
+  return { stockLevels, errors, timestamp: new Date().toISOString() }
 }
 
 export function getLastSync() {
