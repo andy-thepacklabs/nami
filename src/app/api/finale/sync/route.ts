@@ -58,29 +58,34 @@ export async function POST() {
     )
   `)
 
-  // Step 1: Fetch all ACTIVE products (productId + internalName + statusId)
-  const prodRes = await finaleGet('product?limit=2000')
+  // Step 1: Fetch ALL products with full detail (includes category field)
+  // Using /product/ with empty-ish query returns columnar data with category
+  const prodRes = await finaleGet('product?limit=5000')
   if (prodRes.status !== 200) {
     return NextResponse.json({ error: `Finale API returned ${prodRes.status}. Check your credentials.` }, { status: 500 })
   }
 
   const raw = prodRes.data as Record<string, unknown[]>
-  const productIds   = (raw.productId     || []) as string[]
-  const productNames = (raw.internalName  || raw.description || raw.name || []) as string[]
-  const statusIds    = (raw.statusId      || raw.status || []) as string[]
+  const productIds   = (raw.productId    || []) as string[]
+  const productNames = (raw.internalName || raw.description || raw.name || []) as string[]
+  const statusIds    = (raw.statusId     || raw.status || []) as string[]
+  const categories   = (raw.category     || []) as string[]
 
-  // Build active product name map
-  const nameMap = new Map<string, string>()
+  // Build active product map: pid -> { name, category }
+  const productMap = new Map<string, { name: string; category: string }>()
   let skipped = 0
   for (let i = 0; i < productIds.length; i++) {
     const pid = productIds[i]?.trim()
     if (!pid) continue
     const status = (statusIds[i] || '').toString().toUpperCase()
     if (status === 'PRODUCT_INACTIVE' || status === 'INACTIVE') { skipped++; continue }
-    nameMap.set(pid, productNames[i] || '')
+    productMap.set(pid, {
+      name: productNames[i] || '',
+      category: categories[i] || '',
+    })
   }
 
-  if (nameMap.size === 0) {
+  if (productMap.size === 0) {
     return NextResponse.json({ error: 'No active products found in Finale.' }, { status: 500 })
   }
 
@@ -106,31 +111,30 @@ export async function POST() {
     // Filter to active products only and import
     const activeRows = invRows.filter(r => {
       const pid = (r.productId || r.product_id || '').trim()
-      return nameMap.has(pid)
+      return productMap.has(pid)
     })
 
     if (activeRows.length > 0) {
-      return importInventoryLevel(db, activeRows, nameMap, skipped)
+      return importInventoryLevel(db, activeRows, productMap, skipped)
     }
   }
 
-  // Step 3: inventorylevel not available — import products with QoH=0 as placeholders
-  // QoH data requires a Finale CSV export upload
+  // Step 3: inventorylevel not available — import products with category but QoH=0
   db.prepare('DELETE FROM finale_stock_csv').run()
   const ins = db.prepare(`
-    INSERT OR REPLACE INTO finale_stock_csv (product_id, bin_location, product_name, qoh, imported_at)
-    VALUES (?, ?, ?, 0, datetime('now'))
+    INSERT OR REPLACE INTO finale_stock_csv (product_id, bin_location, product_name, category, qoh, imported_at)
+    VALUES (?, ?, ?, ?, 0, datetime('now'))
   `)
-  for (const [pid, name] of nameMap) {
-    ins.run(pid, '', name)
+  for (const [pid, { name, category }] of productMap) {
+    ins.run(pid, '', name, category)
   }
   return NextResponse.json({
     ok: true,
     source: 'product-api',
-    products: nameMap.size,
-    imported: nameMap.size,
+    products: productMap.size,
+    imported: productMap.size,
     skipped,
-    note: 'QoH not available via API — upload a Finale CSV export to add stock quantities',
+    note: 'Category synced ✓ — QoH & sublocations require a Finale CSV export upload',
   })
 }
 
@@ -150,13 +154,13 @@ interface Product {
 function importInventoryLevel(
   db: ReturnType<typeof getDb>,
   rows: InventoryLevel[],
-  nameMap: Map<string, string>,
+  productMap: Map<string, { name: string; category: string }>,
   skipped: number
 ) {
   db.prepare('DELETE FROM finale_stock_csv').run()
   const ins = db.prepare(`
-    INSERT OR REPLACE INTO finale_stock_csv (product_id, bin_location, product_name, qoh, imported_at)
-    VALUES (?, ?, ?, ?, datetime('now'))
+    INSERT OR REPLACE INTO finale_stock_csv (product_id, bin_location, product_name, category, qoh, imported_at)
+    VALUES (?, ?, ?, ?, ?, datetime('now'))
   `)
   let count = 0
   for (const r of rows) {
@@ -164,8 +168,8 @@ function importInventoryLevel(
     const bin = (r.subLocation || r.sub_location || r.binLocation || '').trim()
     const qoh = r.quantityOnHand ?? r.quantity_on_hand ?? r.qoh ?? 0
     if (!pid || qoh <= 0) continue
-    const name = nameMap.get(pid) || ''
-    ins.run(pid, bin, name, qoh)
+    const { name, category } = productMap.get(pid) || { name: '', category: '' }
+    ins.run(pid, bin, name, category, qoh)
     count++
   }
   const products = new Set(rows.map(r => r.productId || r.product_id).filter(Boolean)).size
@@ -184,18 +188,19 @@ function isActive(r: Product): boolean {
 function importProducts(db: ReturnType<typeof getDb>, rows: Product[]) {
   db.prepare('DELETE FROM finale_stock_csv').run()
   const ins = db.prepare(`
-    INSERT OR REPLACE INTO finale_stock_csv (product_id, bin_location, product_name, qoh, imported_at)
-    VALUES (?, ?, ?, ?, datetime('now'))
+    INSERT OR REPLACE INTO finale_stock_csv (product_id, bin_location, product_name, category, qoh, imported_at)
+    VALUES (?, ?, ?, ?, ?, datetime('now'))
   `)
   let count = 0
   let skipped = 0
   for (const r of rows) {
     const pid = (r.productId || r.product_id || r.sku || '').trim()
     const name = (r.description || r.name || '').trim()
+    const cat  = (r.category as string || '').trim()
     const qoh = r.quantityOnHand ?? r.quantity_on_hand ?? r.stockQoh ?? r.qoh ?? 0
     if (!pid) continue
     if (!isActive(r)) { skipped++; continue }
-    ins.run(pid, '', name, qoh)
+    ins.run(pid, '', name, cat, qoh)
     count++
   }
   return NextResponse.json({ ok: true, source: 'product', imported: count, products: count, skipped, note: 'No per-bin breakdown — product totals only' })
