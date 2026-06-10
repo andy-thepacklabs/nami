@@ -31,26 +31,16 @@ function findCol(headers: string[], ...keywords: string[]): number {
 
 export async function POST(req: NextRequest) {
   const formData = await req.formData()
-  const finaleFile = formData.get('finaleFile') as File | null
   const physicalFile = formData.get('physicalFile') as File | null
   const countedBy = (formData.get('countedBy') as string) || 'CSV Compare'
 
-  if (!finaleFile || !physicalFile) {
-    return NextResponse.json({ error: 'Both files are required' }, { status: 400 })
+  if (!physicalFile) {
+    return NextResponse.json({ error: 'Physical count file is required' }, { status: 400 })
   }
 
   // Helper: detect Excel/ZIP magic bytes (PK\x03\x04)
   function isZipFile(bytes: Uint8Array) { return bytes[0] === 0x50 && bytes[1] === 0x4B }
   function isExcelName(name: string) { const n = name.toLowerCase(); return n.endsWith('.xlsx') || n.endsWith('.xls') }
-
-  // Check Finale file
-  if (isExcelName(finaleFile.name)) {
-    return NextResponse.json({ error: 'Finale file is an Excel file (.xlsx/.xls). In Finale, export as CSV: Actions → Export → CSV format.' }, { status: 400 })
-  }
-  const finaleBytes = await finaleFile.arrayBuffer()
-  if (isZipFile(new Uint8Array(finaleBytes.slice(0, 4)))) {
-    return NextResponse.json({ error: 'Finale file appears to be an Excel/ZIP file. Please export as CSV format from Finale.' }, { status: 400 })
-  }
 
   // Check Physical file
   if (isExcelName(physicalFile.name)) {
@@ -61,15 +51,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Physical count file appears to be an Excel/ZIP file. Please save/export as CSV.' }, { status: 400 })
   }
 
-  // Parse Finale CSV — needs Product ID and QoH
-  const { headers: fh, rows: fr } = parseCSV(new TextDecoder().decode(finaleBytes))
-  const fPidCol = findCol(fh, 'product id', 'product_id', 'productid', 'sku', 'item')
-  const fQohCol = findCol(fh, 'qoh', 'qty on hand', 'qty_on_hand', 'quantity on hand', 'on hand', 'onhand')
-  const fBinCol = findCol(fh, 'bin', 'location', 'sublocation', 'sub-location')
-  const fNameCol = findCol(fh, 'description', 'name', 'product name')
-
-  if (fPidCol === -1) return NextResponse.json({ error: `Finale CSV missing Product ID column. Found: [${fh.join(', ')}]` }, { status: 400 })
-  if (fQohCol === -1) return NextResponse.json({ error: `Finale CSV missing QoH column. Found: [${fh.join(', ')}]. Need a column with "qoh", "qty on hand", or "on hand".` }, { status: 400 })
+  // Build Finale map from synced DB data (finale_stock_csv)
+  const db = getDb()
+  const finaleRows = db.prepare(`SELECT product_id, product_name, SUM(qoh) as total_qoh FROM finale_stock_csv GROUP BY product_id`).all() as { product_id: string; product_name: string | null; total_qoh: number }[]
+  if (finaleRows.length === 0) {
+    return NextResponse.json({ error: 'No Finale stock data found. Go to the Finale Report tab and click "Sync from Finale" first.' }, { status: 400 })
+  }
+  const finaleMap = new Map<string, { qoh: number; name: string }>()
+  for (const row of finaleRows) {
+    finaleMap.set(row.product_id, { qoh: row.total_qoh ?? 0, name: row.product_name || row.product_id })
+  }
 
   // Parse physical count CSV — needs Product ID and count
   const { headers: ph, rows: pr } = parseCSV(new TextDecoder().decode(physBytes))
@@ -79,19 +70,6 @@ export async function POST(req: NextRequest) {
 
   if (pPidCol === -1) return NextResponse.json({ error: `Physical count CSV missing Product ID column. Found: [${ph.join(', ')}]` }, { status: 400 })
   if (pCountCol === -1) return NextResponse.json({ error: `Physical count CSV missing count column. Found: [${ph.join(', ')}]. Need a column with "count", "qty", or "quantity".` }, { status: 400 })
-
-  // Build Finale map keyed by productId only (Finale CSV has one row per product, total QoH)
-  const finaleMap = new Map<string, { qoh: number; name: string }>()
-  for (const row of fr) {
-    const pid = row[fPidCol]?.trim()
-    if (!pid) continue
-    const qohRaw = row[fQohCol]?.replace(/,/g, '').trim()
-    const qoh = parseFloat(qohRaw)
-    if (isNaN(qoh)) continue
-    const name = fNameCol >= 0 ? (row[fNameCol]?.trim() || pid) : pid
-    const existing = finaleMap.get(pid)
-    if (existing) { existing.qoh += qoh } else { finaleMap.set(pid, { qoh, name }) }
-  }
 
   // Build physical map keyed by productId only (sum across all bins per product)
   // Also track all bin locations per product for display
@@ -142,7 +120,6 @@ export async function POST(req: NextRequest) {
   const totalVarianceUnits = lines.reduce((s, l) => s + Math.abs(l.variance), 0)
 
   // Save to DB
-  const db = getDb()
   db.exec(`
     CREATE TABLE IF NOT EXISTS sheet_comparisons (
       id INTEGER PRIMARY KEY AUTOINCREMENT, sheet_id TEXT NOT NULL, sheet_name TEXT,
@@ -159,7 +136,7 @@ export async function POST(req: NextRequest) {
   const comp = db.prepare(`
     INSERT INTO sheet_comparisons (sheet_id, sheet_name, counted_by, total_lines, matched, variances, not_in_finale, not_counted, variance_units)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(finaleFile.name, physicalFile.name, countedBy, lines.length, matched, variances, notInFinale, notCounted, totalVarianceUnits)
+  `).run('finale_stock_csv', physicalFile.name, countedBy, lines.length, matched, variances, notInFinale, notCounted, totalVarianceUnits)
   const compId = comp.lastInsertRowid
   const insLine = db.prepare(`
     INSERT INTO sheet_comparison_lines (comparison_id, product_id, product_name, bin_location, finale_qty, physical_count, variance, variance_pct, status)

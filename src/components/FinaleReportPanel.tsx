@@ -10,6 +10,8 @@ interface StockRow {
   category: string
   bin_location: string
   qoh: number
+  available: number | null
+  consumed_90d: number | null
 }
 
 interface ReportData {
@@ -229,6 +231,8 @@ export default function FinaleReportPanel({ onClose: _ }: { onClose: () => void 
                 <th className="text-left text-[10px] font-bold text-orange-700 px-4 py-3 uppercase tracking-[0.15em]">Category</th>
                 <th className="text-left text-[10px] font-bold text-orange-700 px-4 py-3 uppercase tracking-[0.15em]">Sublocations (configurable)</th>
                 <th className="text-right text-[10px] font-bold text-orange-700 px-4 py-3 uppercase tracking-[0.15em]">Stock: QoH</th>
+                <th className="text-right text-[10px] font-bold text-orange-700 px-4 py-3 uppercase tracking-[0.15em]">Stock: Available</th>
+                <th className="text-right text-[10px] font-bold text-orange-700 px-4 py-3 uppercase tracking-[0.15em]">Consumed Past 90d</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-orange-900/10">
@@ -239,6 +243,10 @@ export default function FinaleReportPanel({ onClose: _ }: { onClose: () => void 
                   <td className="px-4 py-2 text-orange-400/70 text-xs">{r.category || '—'}</td>
                   <td className="px-4 py-2 font-mono text-orange-400">{r.bin_location || '—'}</td>
                   <td className="px-4 py-2 text-right font-mono font-bold text-white tabular-nums">{r.qoh}</td>
+                  <td className="px-4 py-2 text-right font-mono font-bold text-emerald-400 tabular-nums">{r.available != null ? r.available : '—'}</td>
+                  <td className="px-4 py-2 text-right font-mono text-amber-400 tabular-nums">
+                    {r.consumed_90d != null ? Math.round(r.consumed_90d).toLocaleString() : '—'}
+                  </td>
                 </tr>
               ))}
             </tbody>

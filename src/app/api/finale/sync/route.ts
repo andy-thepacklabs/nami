@@ -4,6 +4,10 @@ import { getDb } from '@/lib/db'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60 // seconds
 
+const COOLDOWN_MS = 60_000
+let lastSyncAt = 0
+let syncInProgress = false
+
 function getCredentials() {
   const account  = process.env.FINALE_ACCOUNT?.trim() || ''
   const username = process.env.FINALE_USERNAME?.trim() || ''
@@ -67,19 +71,35 @@ function parseSublocationSummary(summary: string | null | undefined): Array<{ bi
   return result
 }
 
-// GET: inspect raw Finale field names (for debugging)
+// GET: introspect Finale GraphQL product type fields
 export async function GET() {
   const { account } = getCredentials()
   if (!account) return NextResponse.json({ error: 'No credentials' }, { status: 400 })
-  const res = await finaleGet('product?limit=2')
-  const raw = res.data as Record<string, unknown>
-  const fields = raw && typeof raw === 'object' ? Object.keys(raw) : []
-  const sample: Record<string, unknown> = {}
-  for (const f of fields) {
-    const arr = raw[f]
-    sample[f] = Array.isArray(arr) ? arr[0] : arr
+
+  // GraphQL introspection — list all fields on the product type
+  const introspectQuery = `{
+    __type(name: "product") {
+      fields { name type { name kind ofType { name kind } } }
+    }
+  }`
+  try {
+    const result = await finaleGraphQL(introspectQuery) as { data?: { __type?: { fields: Array<{ name: string }> } } }
+    const fields = result.data?.__type?.fields?.map(f => f.name) ?? []
+    // Also fetch one product sample to see live values for stock-related fields
+    const sampleQuery = `{
+      productViewConnection(first: 1) {
+        edges { node {
+          productId unitsInStock stockAvailable stockSublocationSummary
+          unitsOnOrder stockOnOrder quantityOnOrder unitsOrdered unitsIncoming
+        } }
+      }
+    }`
+    let sample: unknown = null
+    try { sample = await finaleGraphQL(sampleQuery) } catch { /* ignore unknown fields */ }
+    return NextResponse.json({ fields, sample })
+  } catch (err) {
+    return NextResponse.json({ error: String(err) }, { status: 500 })
   }
-  return NextResponse.json({ status: res.status, fields, sample })
 }
 
 interface GqlProductNode {
@@ -87,7 +107,8 @@ interface GqlProductNode {
   description: string
   category: string
   status: string
-  unitsInStock: string | number | null   // GraphQL returns this as a string e.g. "70040"
+  unitsInStock: string | number | null
+  stockAvailableToPromiseUnits: string | number | null
   stockSublocationSummary: string | null
 }
 
@@ -97,6 +118,62 @@ export async function POST() {
     return NextResponse.json({ error: 'Finale credentials not configured. Go to Settings first.' }, { status: 400 })
   }
 
+  if (syncInProgress) {
+    return NextResponse.json({ error: 'Sync already in progress. Please wait.' }, { status: 429 })
+  }
+  const now = Date.now()
+  if (now - lastSyncAt < COOLDOWN_MS) {
+    const secondsLeft = Math.ceil((COOLDOWN_MS - (now - lastSyncAt)) / 1000)
+    return NextResponse.json({ error: `Please wait ${secondsLeft}s before syncing again.` }, { status: 429 })
+  }
+  syncInProgress = true
+  lastSyncAt = now
+
+  try {
+    return await doSync()
+  } finally {
+    syncInProgress = false
+  }
+}
+
+async function fetchConsumed90d(): Promise<Map<string, number>> {
+  const consumed = new Map<string, number>()
+  try {
+    const weRes = await finaleGet('workeffort')
+    if (weRes.status !== 200) return consumed
+    const weData = weRes.data as Record<string, unknown[]>
+
+    const workEffortIds  = (weData.workEffortId  || []) as string[]
+    const statusIds      = (weData.statusId      || []) as string[]
+    const completeDates  = (weData.completeDate  || []) as (string | null)[]
+    const consumeLists   = (weData.workEffortConsumeList || []) as (unknown[] | null)[]
+
+    const cutoff = new Date()
+    cutoff.setDate(cutoff.getDate() - 90)
+    const cutoffStr = cutoff.toISOString().split('T')[0] // "YYYY-MM-DD"
+
+    for (let i = 0; i < workEffortIds.length; i++) {
+      const status = (statusIds[i] || '').toUpperCase()
+      if (!status.includes('COMPLETE')) continue
+      const cd = completeDates[i]
+      if (!cd || cd < cutoffStr) continue
+
+      const list = consumeLists[i]
+      if (!Array.isArray(list)) continue
+      for (const item of list) {
+        const ci = item as { productId?: string; quantity?: number }
+        const pid = (ci.productId || '').trim()
+        if (!pid || !ci.quantity) continue
+        consumed.set(pid, (consumed.get(pid) || 0) + (ci.quantity || 0))
+      }
+    }
+  } catch (err) {
+    console.warn('[sync] fetchConsumed90d failed:', err)
+  }
+  return consumed
+}
+
+async function doSync(): Promise<ReturnType<typeof NextResponse.json>> {
   const db = getDb()
   db.exec(`
     CREATE TABLE IF NOT EXISTS finale_stock_csv (
@@ -105,11 +182,20 @@ export async function POST() {
       product_name TEXT,
       category     TEXT,
       qoh          REAL NOT NULL DEFAULT 0,
+      available    REAL,
       imported_at  TEXT NOT NULL DEFAULT (datetime('now')),
       PRIMARY KEY (product_id, bin_location)
     )
   `)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS finale_consumed_90d (
+      product_id TEXT PRIMARY KEY,
+      quantity   REAL NOT NULL DEFAULT 0,
+      synced_at  TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `)
   try { db.exec(`ALTER TABLE finale_stock_csv ADD COLUMN category TEXT`) } catch { /* already exists */ }
+  try { db.exec(`ALTER TABLE finale_stock_csv ADD COLUMN available REAL`) } catch { /* already exists */ }
 
   // --- Try GraphQL path first ---
   try {
@@ -130,6 +216,7 @@ export async function POST() {
               category
               status
               unitsInStock
+              stockAvailableToPromiseUnits
               stockSublocationSummary
             }
           }
@@ -178,8 +265,8 @@ export async function POST() {
 
     db.prepare('DELETE FROM finale_stock_csv').run()
     const ins = db.prepare(`
-      INSERT OR REPLACE INTO finale_stock_csv (product_id, bin_location, product_name, category, qoh, imported_at)
-      VALUES (?, ?, ?, ?, ?, datetime('now'))
+      INSERT OR REPLACE INTO finale_stock_csv (product_id, bin_location, product_name, category, qoh, available, imported_at)
+      VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
     `)
 
     let imported = 0
@@ -187,16 +274,17 @@ export async function POST() {
     db.exec('BEGIN')
     try {
       for (const p of activeProducts) {
-        const pid  = (p.productId || '').trim()
-        const name = (p.description || '').trim()
-        const cat  = (p.category || '').trim()
+        const pid       = (p.productId || '').trim()
+        const name      = (p.description || '').trim()
+        const cat       = (p.category || '').trim()
+        const available = parseFloat(String(p.stockAvailableToPromiseUnits ?? '0').replace(/,/g, '')) || 0
         if (!pid) continue
 
         if (hasSublocs && p.stockSublocationSummary) {
           const bins = parseSublocationSummary(p.stockSublocationSummary)
           if (bins.length > 0) {
             for (const { bin, qty } of bins) {
-              ins.run(pid, bin, name, cat, qty)
+              ins.run(pid, bin, name, cat, qty, available)
               imported++
             }
             continue
@@ -205,7 +293,7 @@ export async function POST() {
 
         // No sublocation data — store product total
         const qoh = parseFloat(String(p.unitsInStock ?? '0')) || 0
-        ins.run(pid, '', name, cat, qoh)
+        ins.run(pid, '', name, cat, qoh, available)
         imported++
       }
       db.exec('COMMIT')
@@ -214,12 +302,33 @@ export async function POST() {
       throw e
     }
 
+    // Fetch consumed qty per product for last 90 days from build completions
+    const consumed = await fetchConsumed90d()
+    if (consumed.size > 0) {
+      const insC = db.prepare(`
+        INSERT OR REPLACE INTO finale_consumed_90d (product_id, quantity, synced_at)
+        VALUES (?, ?, datetime('now'))
+      `)
+      db.prepare('DELETE FROM finale_consumed_90d').run()
+      db.exec('BEGIN')
+      try {
+        for (const [pid, qty] of consumed) {
+          insC.run(pid, qty)
+        }
+        db.exec('COMMIT')
+      } catch (e) {
+        db.exec('ROLLBACK')
+        console.warn('[sync] Failed to save consumed data:', e)
+      }
+    }
+
     return NextResponse.json({
       ok: true,
       source: 'graphql',
       products: activeProducts.length,
       imported,
       skipped,
+      consumed: consumed.size,
       note: hasSublocs ? `QoH & sublocations synced from Finale ✓` : `QoH synced ✓ — no sublocation data in Finale`,
     })
 

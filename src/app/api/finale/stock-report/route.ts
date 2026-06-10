@@ -15,6 +15,13 @@ function ensureSchema(db: ReturnType<typeof getDb>) {
       PRIMARY KEY (product_id, bin_location)
     )
   `)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS finale_consumed_90d (
+      product_id TEXT PRIMARY KEY,
+      quantity   REAL NOT NULL DEFAULT 0,
+      synced_at  TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `)
   try { db.exec(`ALTER TABLE finale_stock_csv ADD COLUMN category TEXT`) } catch { /* already exists */ }
 }
 
@@ -44,9 +51,13 @@ export async function GET(req: NextRequest) {
     if (search) {
       const s = search
       rows = db.prepare(
-        `SELECT product_id, product_name, category, bin_location, qoh FROM finale_stock_csv
-         WHERE instr(lower(product_id),?) OR instr(lower(COALESCE(product_name,'')),?) OR instr(lower(COALESCE(category,'')),?) OR instr(lower(COALESCE(bin_location,'')),?)
-         ORDER BY product_id, bin_location LIMIT ? OFFSET ?`
+        `SELECT s.product_id, s.product_name, s.category, s.bin_location, s.qoh,
+             MAX(s.available) OVER (PARTITION BY s.product_id) AS available,
+             c.quantity AS consumed_90d
+      FROM finale_stock_csv s
+      LEFT JOIN finale_consumed_90d c ON c.product_id = s.product_id
+         WHERE instr(lower(s.product_id),?) OR instr(lower(COALESCE(s.product_name,'')),?) OR instr(lower(COALESCE(s.category,'')),?) OR instr(lower(COALESCE(s.bin_location,'')),?)
+         ORDER BY s.product_id, s.bin_location LIMIT ? OFFSET ?`
       ).all(s, s, s, s, limit, offset)
 
       filteredTotal = (db.prepare(
@@ -55,8 +66,12 @@ export async function GET(req: NextRequest) {
       ).get(s, s, s, s) as { c: number }).c
     } else {
       rows = db.prepare(
-        `SELECT product_id, product_name, category, bin_location, qoh FROM finale_stock_csv
-         ORDER BY product_id, bin_location LIMIT ? OFFSET ?`
+        `SELECT s.product_id, s.product_name, s.category, s.bin_location, s.qoh,
+             MAX(s.available) OVER (PARTITION BY s.product_id) AS available,
+             c.quantity AS consumed_90d
+      FROM finale_stock_csv s
+      LEFT JOIN finale_consumed_90d c ON c.product_id = s.product_id
+         ORDER BY s.product_id, s.bin_location LIMIT ? OFFSET ?`
       ).all(limit, offset)
       filteredTotal = stats.bins
     }

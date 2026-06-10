@@ -50,7 +50,6 @@ export default function SheetsPanel({ onClose, onVariancesFound }: {
   const [comparison, setComparison] = useState<ComparisonResult | null>(null)
   const [importError, setImportError] = useState('')
   const [csvFile, setCsvFile] = useState<File | null>(null)
-  const [finaleFile, setFinaleFile] = useState<File | null>(null)
   const [physicalFile, setPhysicalFile] = useState<File | null>(null)
   const [dragOver, setDragOver] = useState(false)
   const [stockFile, setStockFile] = useState<File | null>(null)
@@ -59,14 +58,14 @@ export default function SheetsPanel({ onClose, onVariancesFound }: {
   type FilterKey = 'all' | 'variance' | 'not_counted' | 'match'
   const [filter, setFilter] = useState<FilterKey>('all')
 
-  const runCompareImport = async () => {
-    if (!finaleFile || !physicalFile || !countedBy.trim()) return
+  const runCompareImport = async (file?: File) => {
+    const pFile = file || physicalFile
+    if (!pFile || !countedBy.trim()) return
     setImporting(true)
     setImportError('')
     try {
       const form = new FormData()
-      form.append('finaleFile', finaleFile)
-      form.append('physicalFile', physicalFile)
+      form.append('physicalFile', pFile)
       form.append('countedBy', countedBy.trim())
       const res = await fetch('/api/sheets/compare-csv', { method: 'POST', body: form })
       const data = await res.json()
@@ -194,109 +193,76 @@ export default function SheetsPanel({ onClose, onVariancesFound }: {
                 >
                   <FileSpreadsheet className="w-3.5 h-3.5" /> Finale vs Physical
                 </button>
-                <button
-                  onClick={() => setInputMode('csv')}
-                  className={cn('flex-1 flex items-center justify-center gap-2 py-2 rounded-md text-xs font-bold uppercase tracking-wide transition-colors',
-                    inputMode === 'csv' ? 'bg-orange-500/20 text-orange-400' : 'text-orange-800 hover:text-orange-400'
-                  )}
-                >
-                  <Upload className="w-3.5 h-3.5" /> Physical vs Nami DB
-                </button>
-                <button
-                  onClick={() => setInputMode('google')}
-                  className={cn('flex-1 flex items-center justify-center gap-2 py-2 rounded-md text-xs font-bold uppercase tracking-wide transition-colors',
-                    inputMode === 'google' ? 'bg-orange-500/20 text-orange-400' : 'text-orange-800 hover:text-orange-400'
-                  )}
-                >
-                  <RefreshCw className="w-3.5 h-3.5" /> Google Sheets
-                </button>
               </div>
 
               {inputMode === 'compare' ? (
                 <>
-                  {/* Finale export */}
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <label className="text-[10px] font-bold text-orange-700 uppercase tracking-[0.2em]">
-                        Finale Stock Export
-                      </label>
-                    </div>
-                    <div className="text-[10px] text-orange-800 mb-2 leading-relaxed">
-                      In Finale: <span className="text-orange-500">Inventory → Stock → Location: SFS-HQ → Export</span>
-                      <br />Include columns: Product ID, Description, Stock QoH, Sublocations
-                    </div>
-                    <div
-                      onDragOver={e => { e.preventDefault(); setDragOver(true) }}
-                      onDragLeave={() => setDragOver(false)}
-                      onDrop={e => { e.preventDefault(); setDragOver(false); const f = e.dataTransfer.files[0]; if (f) setFinaleFile(f) }}
-                      onClick={() => document.getElementById('finale-upload')?.click()}
-                      className={cn('border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-colors',
-                        finaleFile ? 'border-emerald-500/40 bg-emerald-500/5' : 'border-orange-900/40 hover:border-orange-700/60'
-                      )}
-                    >
-                      <input id="finale-upload" type="file" accept=".csv" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) setFinaleFile(f) }} />
-                      {finaleFile ? (
-                        <div className="flex items-center justify-center gap-2 text-emerald-400">
-                          <CheckCircle2 className="w-4 h-4" />
-                          <span className="text-sm font-medium">{finaleFile.name}</span>
-                          <span className="text-xs text-orange-700">({Math.round(finaleFile.size / 1024)}KB)</span>
-                        </div>
-                      ) : (
-                        <div>
-                          <Download className="w-6 h-6 text-orange-800 mx-auto mb-1" />
-                          <p className="text-sm text-orange-600 font-medium">Drop exported CSV here</p>
-                          <p className="text-xs text-orange-900 mt-0.5">Drag the downloaded file straight from your browser</p>
-                        </div>
-                      )}
-                    </div>
-                    {finaleFile && <button onClick={() => setFinaleFile(null)} className="text-[10px] text-orange-700 hover:text-orange-400 mt-1">Remove</button>}
-                  </div>
-
-                  {/* Physical count */}
-                  <div>
-                    <label className="text-[10px] font-bold text-orange-700 uppercase tracking-[0.2em] block mb-2">
-                      Physical Count CSV <span className="text-orange-900 normal-case font-normal">(your cycle count sheet)</span>
-                    </label>
-                    <div
-                      onDragOver={e => { e.preventDefault() }}
-                      onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) setPhysicalFile(f) }}
-                      onClick={() => document.getElementById('physical-upload')?.click()}
-                      className={cn('border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-colors',
-                        physicalFile ? 'border-emerald-500/40 bg-emerald-500/5' : 'border-orange-900/40 hover:border-orange-700/60'
-                      )}
-                    >
-                      <input id="physical-upload" type="file" accept=".csv" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) setPhysicalFile(f) }} />
-                      {physicalFile ? (
-                        <div className="flex items-center justify-center gap-2 text-emerald-400">
-                          <CheckCircle2 className="w-4 h-4" />
-                          <span className="text-sm font-medium">{physicalFile.name}</span>
-                          <span className="text-xs text-orange-700">({Math.round(physicalFile.size / 1024)}KB)</span>
-                        </div>
-                      ) : (
-                        <div>
-                          <Upload className="w-6 h-6 text-orange-800 mx-auto mb-1" />
-                          <p className="text-sm text-orange-600 font-medium">Drop physical count CSV here</p>
-                          <p className="text-xs text-orange-900 mt-0.5">Needs: Product ID + Count columns</p>
-                        </div>
-                      )}
-                    </div>
-                    {physicalFile && <button onClick={() => setPhysicalFile(null)} className="text-[10px] text-orange-700 hover:text-orange-400 mt-1">Remove</button>}
-                  </div>
-
                   {/* Counted by */}
                   <div>
                     <label className="text-[10px] font-bold text-orange-700 uppercase tracking-[0.2em] block mb-2">Counted By</label>
                     <input className="input w-full" placeholder="Who did the count?" value={countedBy} onChange={e => setCountedBy(e.target.value)} />
                   </div>
 
-                  <button
-                    onClick={runCompareImport}
-                    disabled={importing || !finaleFile || !physicalFile || !countedBy.trim()}
-                    className="btn-primary text-xs"
-                  >
-                    {importing ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <ArrowRight className="w-3.5 h-3.5" />}
-                    {importing ? 'Comparing...' : 'Compare Finale vs Physical'}
-                  </button>
+                  {/* Physical count CSV — auto-compares on upload */}
+                  <div>
+                    <label className="text-[10px] font-bold text-orange-700 uppercase tracking-[0.2em] block mb-2">
+                      Physical Count CSV <span className="text-orange-900 normal-case font-normal">(compares against synced Finale data)</span>
+                    </label>
+                    <div
+                      onDragOver={e => { e.preventDefault(); setDragOver(true) }}
+                      onDragLeave={() => setDragOver(false)}
+                      onDrop={e => {
+                        e.preventDefault(); setDragOver(false)
+                        const f = e.dataTransfer.files[0]
+                        if (f) { setPhysicalFile(f); if (countedBy.trim()) runCompareImport(f) }
+                      }}
+                      onClick={() => document.getElementById('physical-upload')?.click()}
+                      className={cn('border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-colors',
+                        dragOver ? 'border-orange-500 bg-orange-500/10' : physicalFile ? 'border-emerald-500/40 bg-emerald-500/5' : 'border-orange-900/40 hover:border-orange-700/60'
+                      )}
+                    >
+                      <input
+                        id="physical-upload"
+                        type="file"
+                        accept=".csv"
+                        className="hidden"
+                        onChange={e => {
+                          const f = e.target.files?.[0]
+                          if (f) { setPhysicalFile(f); if (countedBy.trim()) runCompareImport(f) }
+                        }}
+                      />
+                      {importing ? (
+                        <div className="flex items-center justify-center gap-2 text-orange-400">
+                          <RefreshCw className="w-5 h-5 animate-spin" />
+                          <span className="text-sm font-medium">Comparing against Finale...</span>
+                        </div>
+                      ) : physicalFile ? (
+                        <div className="flex items-center justify-center gap-2 text-emerald-400">
+                          <CheckCircle2 className="w-5 h-5" />
+                          <span className="text-sm font-medium">{physicalFile.name}</span>
+                          <span className="text-xs text-orange-700">({Math.round(physicalFile.size / 1024)}KB)</span>
+                        </div>
+                      ) : (
+                        <div>
+                          <Upload className="w-8 h-8 text-orange-800 mx-auto mb-2" />
+                          <p className="text-sm text-orange-600 font-medium">Drop physical count CSV here</p>
+                          <p className="text-xs text-orange-900 mt-1">Auto-compares against synced Finale QoH — no export needed</p>
+                        </div>
+                      )}
+                    </div>
+                    {physicalFile && !importing && <button onClick={() => setPhysicalFile(null)} className="text-[10px] text-orange-700 hover:text-orange-400 mt-1">Remove</button>}
+                  </div>
+
+                  {!countedBy.trim() && physicalFile && (
+                    <div className="text-xs text-amber-500">Enter a name in "Counted By" above, then re-upload or click Compare.</div>
+                  )}
+
+                  {physicalFile && countedBy.trim() && (
+                    <button onClick={() => runCompareImport()} disabled={importing} className="btn-primary text-xs">
+                      {importing ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <ArrowRight className="w-3.5 h-3.5" />}
+                      {importing ? 'Comparing...' : 'Compare Finale vs Physical'}
+                    </button>
+                  )}
                 </>
               ) : inputMode === 'csv' ? (
                 <>
