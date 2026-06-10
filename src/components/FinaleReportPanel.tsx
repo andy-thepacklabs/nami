@@ -25,7 +25,7 @@ export default function FinaleReportPanel({ onClose: _ }: { onClose: () => void 
   const [uploadingStock, setUploadingStock] = useState(false)
   const [uploadError, setUploadError] = useState('')
   const [syncing, setSyncing] = useState(false)
-  const [syncResult, setSyncResult] = useState<{ ok?: boolean; source?: string; imported?: number; products?: number; note?: string; error?: string } | null>(null)
+  const [syncResult, setSyncResult] = useState<{ ok?: boolean; source?: string; imported?: number; products?: number; skipped?: number; note?: string; error?: string } | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -131,10 +131,11 @@ export default function FinaleReportPanel({ onClose: _ }: { onClose: () => void 
             <div className="flex items-center gap-3">
               <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
               <div className="text-xs text-emerald-300">
-                Synced <span className="font-bold">{syncResult.products}</span> products
+                Synced <span className="font-bold">{syncResult.products}</span> active products
                 {syncResult.imported !== syncResult.products && <>, <span className="font-bold">{syncResult.imported}</span> bin rows</>}
                 {' '}from Finale API
-                {syncResult.note && <span className="text-orange-500 ml-2">({syncResult.note})</span>}
+                {(syncResult.skipped ?? 0) > 0 && <span className="text-orange-500 ml-2">({syncResult.skipped} inactive skipped)</span>}
+                {syncResult.note && <span className="text-orange-600 ml-2">· {syncResult.note}</span>}
               </div>
             </div>
           )}

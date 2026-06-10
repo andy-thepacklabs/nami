@@ -44,8 +44,23 @@ export async function POST() {
 
   // Try inventorylevel first (has per-bin data)
   const invRes = await finaleGet('inventorylevel')
-  if (invRes.status === 200 && Array.isArray(invRes.data) && (invRes.data as unknown[]).length > 0) {
-    return importInventoryLevel(db, invRes.data as InventoryLevel[])
+  if (invRes.status === 200 && invRes.data) {
+    const invRaw = invRes.data as Record<string, unknown[]>
+    let invRows: InventoryLevel[] = []
+    if (Array.isArray(invRes.data) && (invRes.data as unknown[]).length > 0) {
+      invRows = invRes.data as InventoryLevel[]
+    } else if (invRaw && Array.isArray(invRaw.productId)) {
+      // Columnar format
+      const ids  = invRaw.productId as string[]
+      const bins = (invRaw.subLocation || invRaw.binLocation || invRaw.sub_location || []) as string[]
+      const qohs = (invRaw.quantityOnHand || invRaw.quantity_on_hand || invRaw.qoh || []) as number[]
+      invRows = ids.map((pid, i) => ({
+        productId: pid,
+        subLocation: bins[i] || '',
+        quantityOnHand: Number(qohs[i]) || 0,
+      }))
+    }
+    if (invRows.length > 0) return importInventoryLevel(db, invRows)
   }
 
   // Fallback: product endpoint (totals only, no per-bin breakdown)
@@ -54,12 +69,34 @@ export async function POST() {
     return NextResponse.json({ error: `Finale API returned ${prodRes.status}. Check your credentials in Settings.` }, { status: 500 })
   }
 
-  const products = Array.isArray(prodRes.data) ? prodRes.data : []
-  if (products.length === 0) {
-    return NextResponse.json({ error: 'No products returned from Finale API.' }, { status: 500 })
+  // Finale returns columnar format: { productId: [...], description: [...], quantityOnHand: [...] }
+  const raw = prodRes.data as Record<string, unknown[]>
+
+  let products: Product[] = []
+
+  if (Array.isArray(prodRes.data)) {
+    // Normal row-based array
+    products = prodRes.data as Product[]
+  } else if (raw && Array.isArray(raw.productId)) {
+    // Columnar: zip arrays into row objects
+    const ids      = raw.productId as string[]
+    const names    = (raw.description || raw.productDescription || raw.name || []) as string[]
+    const qohs     = (raw.quantityOnHand || raw.quantity_on_hand || raw.stockQoh || raw.qoh || []) as number[]
+    const statuses = (raw.active || raw.status || raw.productStatus || raw.enabled || []) as unknown[]
+    products = ids.map((pid, i) => ({
+      productId: pid,
+      description: names[i] || '',
+      quantityOnHand: Number(qohs[i]) || 0,
+      active: statuses.length > 0 ? statuses[i] : true,
+    }))
   }
 
-  return importProducts(db, products as Product[])
+  if (products.length === 0) {
+    const preview = JSON.stringify(prodRes.data).slice(0, 300)
+    return NextResponse.json({ error: `No products found. Raw: ${preview}` }, { status: 500 })
+  }
+
+  return importProducts(db, products)
 }
 
 interface InventoryLevel {
@@ -72,6 +109,7 @@ interface Product {
   productId?: string; product_id?: string; sku?: string
   description?: string; name?: string
   quantityOnHand?: number; quantity_on_hand?: number; qoh?: number; stockQoh?: number
+  active?: unknown; status?: unknown; productStatus?: unknown; enabled?: unknown
 }
 
 function importInventoryLevel(db: ReturnType<typeof getDb>, rows: InventoryLevel[]) {
@@ -93,6 +131,15 @@ function importInventoryLevel(db: ReturnType<typeof getDb>, rows: InventoryLevel
   return NextResponse.json({ ok: true, source: 'inventorylevel', imported: count, products })
 }
 
+function isActive(r: Product): boolean {
+  const val = r.active ?? r.status ?? r.productStatus ?? r.enabled
+  if (val === undefined || val === null) return true // no status field = assume active
+  if (typeof val === 'boolean') return val
+  const s = String(val).toLowerCase().trim()
+  // Treat these as inactive
+  return !['false', '0', 'inactive', 'disabled', 'no', 'n'].includes(s)
+}
+
 function importProducts(db: ReturnType<typeof getDb>, rows: Product[]) {
   db.prepare('DELETE FROM finale_stock_csv').run()
   const ins = db.prepare(`
@@ -100,13 +147,15 @@ function importProducts(db: ReturnType<typeof getDb>, rows: Product[]) {
     VALUES (?, ?, ?, ?, datetime('now'))
   `)
   let count = 0
+  let skipped = 0
   for (const r of rows) {
     const pid = (r.productId || r.product_id || r.sku || '').trim()
     const name = (r.description || r.name || '').trim()
     const qoh = r.quantityOnHand ?? r.quantity_on_hand ?? r.stockQoh ?? r.qoh ?? 0
     if (!pid) continue
+    if (!isActive(r)) { skipped++; continue }
     ins.run(pid, '', name, qoh)
     count++
   }
-  return NextResponse.json({ ok: true, source: 'product', imported: count, products: count, note: 'No per-bin breakdown — product totals only' })
+  return NextResponse.json({ ok: true, source: 'product', imported: count, products: count, skipped, note: 'No per-bin breakdown — product totals only' })
 }
