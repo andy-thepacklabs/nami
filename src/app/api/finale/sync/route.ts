@@ -52,11 +52,14 @@ export async function POST() {
       product_id   TEXT NOT NULL,
       bin_location TEXT NOT NULL DEFAULT '',
       product_name TEXT,
+      category     TEXT,
       qoh          REAL NOT NULL DEFAULT 0,
       imported_at  TEXT NOT NULL DEFAULT (datetime('now')),
       PRIMARY KEY (product_id, bin_location)
     )
   `)
+  // Migrate older schemas that are missing category
+  try { db.exec(`ALTER TABLE finale_stock_csv ADD COLUMN category TEXT`) } catch { /* already exists */ }
 
   // Step 1: Fetch ALL products with full detail (includes category field)
   // Using /product/ with empty-ish query returns columnar data with category

@@ -19,48 +19,65 @@ function ensureSchema(db: ReturnType<typeof getDb>) {
 }
 
 export async function GET(req: NextRequest) {
-  const db = getDb()
   try {
+    const db = getDb()
     ensureSchema(db)
 
-    const url = req.nextUrl
-    const page    = Math.max(1, parseInt(url.searchParams.get('page')  || '1'))
-    const limit   = Math.min(500, parseInt(url.searchParams.get('limit') || '200'))
-    const search  = (url.searchParams.get('search') || '').toLowerCase().trim()
-    const offset  = (page - 1) * limit
+    const search = (req.nextUrl.searchParams.get('search') || '').toLowerCase().trim()
+    const page   = Math.max(1, parseInt(req.nextUrl.searchParams.get('page') || '1'))
+    const limit  = 200
+    const offset = (page - 1) * limit
 
-    // Summary stats (always from full table)
-    const totalProducts = (db.prepare(`SELECT COUNT(DISTINCT product_id) as c FROM finale_stock_csv`).get() as { c: number }).c
-    const totalUnits    = (db.prepare(`SELECT COALESCE(SUM(qoh),0) as s FROM finale_stock_csv`).get() as { s: number }).s
-    const importedAt    = (db.prepare(`SELECT imported_at FROM finale_stock_csv ORDER BY imported_at DESC LIMIT 1`).get() as { imported_at: string } | undefined)?.imported_at ?? null
-    const totalBins     = (db.prepare(`SELECT COUNT(*) as c FROM finale_stock_csv`).get() as { c: number }).c
+    // Always fetch summary from full table
+    const stats = db.prepare(
+      `SELECT COUNT(DISTINCT product_id) as products, COUNT(*) as bins, COALESCE(SUM(qoh),0) as units FROM finale_stock_csv`
+    ).get() as { products: number; bins: number; units: number }
 
-    // Filtered + paginated rows
+    const importedAt = (db.prepare(
+      `SELECT imported_at FROM finale_stock_csv ORDER BY rowid DESC LIMIT 1`
+    ).get() as { imported_at: string } | undefined)?.imported_at ?? null
+
+    // Fetch rows — with or without search filter
     let rows: unknown[]
+    let filteredTotal: number
+
     if (search) {
-      rows = db.prepare(`
-        SELECT product_id, product_name, category, bin_location, qoh, imported_at
-        FROM finale_stock_csv
-        WHERE lower(product_id) LIKE ? OR lower(product_name) LIKE ? OR lower(category) LIKE ? OR lower(bin_location) LIKE ?
-        ORDER BY product_id, bin_location
-        LIMIT ? OFFSET ?
-      `).all(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`, limit, offset)
+      const s = search
+      rows = db.prepare(
+        `SELECT product_id, product_name, category, bin_location, qoh FROM finale_stock_csv
+         WHERE instr(lower(product_id),?) OR instr(lower(COALESCE(product_name,'')),?) OR instr(lower(COALESCE(category,'')),?) OR instr(lower(COALESCE(bin_location,'')),?)
+         ORDER BY product_id, bin_location LIMIT ? OFFSET ?`
+      ).all(s, s, s, s, limit, offset)
+
+      filteredTotal = (db.prepare(
+        `SELECT COUNT(*) as c FROM finale_stock_csv
+         WHERE instr(lower(product_id),?) OR instr(lower(COALESCE(product_name,'')),?) OR instr(lower(COALESCE(category,'')),?) OR instr(lower(COALESCE(bin_location,'')),?)`
+      ).get(s, s, s, s) as { c: number }).c
     } else {
-      rows = db.prepare(`
-        SELECT product_id, product_name, category, bin_location, qoh, imported_at
-        FROM finale_stock_csv
-        ORDER BY product_id, bin_location
-        LIMIT ? OFFSET ?
-      `).all(limit, offset)
+      rows = db.prepare(
+        `SELECT product_id, product_name, category, bin_location, qoh FROM finale_stock_csv
+         ORDER BY product_id, bin_location LIMIT ? OFFSET ?`
+      ).all(limit, offset)
+      filteredTotal = stats.bins
     }
 
-    const filteredTotal = search
-      ? (db.prepare(`SELECT COUNT(*) as c FROM finale_stock_csv WHERE lower(product_id) LIKE ? OR lower(product_name) LIKE ? OR lower(category) LIKE ? OR lower(bin_location) LIKE ?`).get(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`) as { c: number }).c
-      : totalBins
-
-    return NextResponse.json({ rows, importedAt, totalProducts, totalBins, totalUnits, page, limit, filteredTotal })
+    return NextResponse.json({
+      rows,
+      importedAt,
+      totalProducts: stats.products,
+      totalBins: stats.bins,
+      totalUnits: stats.units,
+      page,
+      limit,
+      filteredTotal,
+    })
   } catch (err) {
-    console.error('stock-report error:', err)
-    return NextResponse.json({ rows: [], importedAt: null, totalProducts: 0, totalBins: 0, totalUnits: 0, page: 1, limit: 200, filteredTotal: 0 })
+    console.error('[stock-report]', err)
+    return NextResponse.json({
+      rows: [], importedAt: null,
+      totalProducts: 0, totalBins: 0, totalUnits: 0,
+      page: 1, limit: 200, filteredTotal: 0,
+      error: String(err),
+    })
   }
 }
