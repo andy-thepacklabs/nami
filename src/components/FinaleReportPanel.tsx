@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
-import { RefreshCw, FileSpreadsheet, Search, Upload, AlertCircle, Zap, CheckCircle2 } from 'lucide-react'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { RefreshCw, FileSpreadsheet, Search, Upload, AlertCircle, Zap, CheckCircle2, ChevronLeft, ChevronRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface StockRow {
@@ -16,28 +16,52 @@ interface ReportData {
   rows: StockRow[]
   importedAt: string | null
   totalProducts: number
+  totalBins: number
   totalUnits: number
+  page: number
+  limit: number
+  filteredTotal: number
 }
+
+const PAGE_SIZE = 200
 
 export default function FinaleReportPanel({ onClose: _ }: { onClose: () => void }) {
   const [data, setData] = useState<ReportData | null>(null)
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
+  const [page, setPage] = useState(1)
   const [uploadingStock, setUploadingStock] = useState(false)
   const [uploadError, setUploadError] = useState('')
   const [syncing, setSyncing] = useState(false)
   const [syncResult, setSyncResult] = useState<{ ok?: boolean; source?: string; imported?: number; products?: number; skipped?: number; note?: string; error?: string } | null>(null)
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (p = page, s = debouncedSearch) => {
     setLoading(true)
     try {
-      const res = await fetch('/api/finale/stock-report')
+      const params = new URLSearchParams({ page: String(p), limit: String(PAGE_SIZE) })
+      if (s) params.set('search', s)
+      const res = await fetch(`/api/finale/stock-report?${params}`)
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
       setData(await res.json())
-    } catch { /* ignore */ }
+    } catch (err) {
+      console.error('load error', err)
+    }
     setLoading(false)
-  }, [])
+  }, [page, debouncedSearch])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => { load(page, debouncedSearch) }, [page, debouncedSearch]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Debounce search — push to server after 350ms
+  useEffect(() => {
+    if (searchTimer.current) clearTimeout(searchTimer.current)
+    searchTimer.current = setTimeout(() => {
+      setPage(1)
+      setDebouncedSearch(search)
+    }, 350)
+    return () => { if (searchTimer.current) clearTimeout(searchTimer.current) }
+  }, [search])
 
   const syncFromApi = async () => {
     setSyncing(true)
@@ -47,7 +71,7 @@ export default function FinaleReportPanel({ onClose: _ }: { onClose: () => void 
       const res = await fetch('/api/finale/sync', { method: 'POST' })
       const result = await res.json()
       setSyncResult(result)
-      if (!result.error) await load()
+      if (!result.error) { setPage(1); await load(1, debouncedSearch) }
     } catch (err) {
       setSyncResult({ error: (err as Error).message })
     }
@@ -62,19 +86,14 @@ export default function FinaleReportPanel({ onClose: _ }: { onClose: () => void 
       form.append('file', file)
       const res = await fetch('/api/finale/import-stock-csv', { method: 'POST', body: form })
       const result = await res.json()
-      if (result.error) { setUploadError(result.error) } else { await load() }
+      if (result.error) { setUploadError(result.error) } else { setPage(1); await load(1, debouncedSearch) }
     } catch (err) {
       setUploadError((err as Error).message)
     }
     setUploadingStock(false)
   }
 
-  const filtered = data?.rows.filter(r =>
-    !search || r.product_id.toLowerCase().includes(search.toLowerCase()) ||
-    r.product_name?.toLowerCase().includes(search.toLowerCase()) ||
-    r.category?.toLowerCase().includes(search.toLowerCase()) ||
-    r.bin_location?.toLowerCase().includes(search.toLowerCase())
-  ) ?? []
+  const totalPages = data ? Math.ceil(data.filteredTotal / PAGE_SIZE) : 1
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -94,27 +113,21 @@ export default function FinaleReportPanel({ onClose: _ }: { onClose: () => void 
             <Search className="w-3.5 h-3.5 text-orange-700 absolute left-2.5 top-2" />
             <input
               className="input text-xs h-8 pl-8 w-52"
-              placeholder="Search product or bin..."
+              placeholder="Search product, category or bin..."
               value={search}
               onChange={e => setSearch(e.target.value)}
             />
           </div>
-          <button onClick={load} disabled={loading} className="btn-ghost text-xs h-8 px-3">
+          <button onClick={() => load(page, debouncedSearch)} disabled={loading} className="btn-ghost text-xs h-8 px-3">
             <RefreshCw className={cn('w-3.5 h-3.5', loading && 'animate-spin')} />
           </button>
-          {/* Sync from Finale API */}
-          <button
-            onClick={syncFromApi}
-            disabled={syncing}
-            className="btn-primary text-xs h-8 px-3 flex items-center gap-1.5"
-          >
+          <button onClick={syncFromApi} disabled={syncing} className="btn-primary text-xs h-8 px-3 flex items-center gap-1.5">
             {syncing ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
             {syncing ? 'Syncing...' : 'Sync from Finale'}
           </button>
-          {/* Upload CSV fallback */}
           <label className="btn-ghost text-xs h-8 px-3 cursor-pointer flex items-center gap-1.5">
             <Upload className="w-3.5 h-3.5" />
-            CSV
+            {uploadingStock ? 'Importing...' : 'CSV'}
             <input type="file" accept=".csv" className="hidden"
               onChange={e => { const f = e.target.files?.[0]; if (f) uploadCsv(f) }} />
           </label>
@@ -133,17 +146,14 @@ export default function FinaleReportPanel({ onClose: _ }: { onClose: () => void 
             <div className="flex items-center gap-3">
               <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
               <div className="text-xs text-emerald-300">
-                Synced <span className="font-bold">{syncResult.products}</span> active products
-                {syncResult.imported !== syncResult.products && <>, <span className="font-bold">{syncResult.imported}</span> bin rows</>}
-                {' '}from Finale API
+                Synced <span className="font-bold">{syncResult.products}</span> active products from Finale API
                 {(syncResult.skipped ?? 0) > 0 && <span className="text-orange-500 ml-2">({syncResult.skipped} inactive skipped)</span>}
-                {syncResult.note && <span className="text-orange-600 ml-2">· {syncResult.note}</span>}
+                {syncResult.note && <span className="text-orange-500 ml-2">· {syncResult.note}</span>}
               </div>
             </div>
           )}
         </div>
       )}
-      {/* Upload error */}
       {uploadError && (
         <div className="mx-6 mt-3 card p-3 border-red-500/20 flex items-center gap-2 shrink-0">
           <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
@@ -152,23 +162,23 @@ export default function FinaleReportPanel({ onClose: _ }: { onClose: () => void 
       )}
 
       {/* Summary cards */}
-      {data && data.rows.length > 0 && (
+      {data && data.totalProducts > 0 && (
         <div className="px-6 py-3 border-b border-orange-900/20 bg-[#12100d] flex gap-6 shrink-0">
           <div>
-            <div className="text-lg font-black text-orange-400 tabular-nums">{data.totalProducts}</div>
+            <div className="text-lg font-black text-orange-400 tabular-nums">{data.totalProducts.toLocaleString()}</div>
             <div className="text-[10px] text-orange-700 uppercase tracking-wide">Products</div>
           </div>
           <div>
-            <div className="text-lg font-black text-white tabular-nums">{data.rows.length}</div>
+            <div className="text-lg font-black text-white tabular-nums">{data.totalBins.toLocaleString()}</div>
             <div className="text-[10px] text-orange-700 uppercase tracking-wide">Bin Locations</div>
           </div>
           <div>
             <div className="text-lg font-black text-emerald-400 tabular-nums">{Math.round(data.totalUnits).toLocaleString()}</div>
             <div className="text-[10px] text-orange-700 uppercase tracking-wide">Total Units</div>
           </div>
-          {search && (
+          {debouncedSearch && (
             <div>
-              <div className="text-lg font-black text-amber-400 tabular-nums">{filtered.length}</div>
+              <div className="text-lg font-black text-amber-400 tabular-nums">{data.filteredTotal.toLocaleString()}</div>
               <div className="text-[10px] text-orange-700 uppercase tracking-wide">Results</div>
             </div>
           )}
@@ -176,20 +186,16 @@ export default function FinaleReportPanel({ onClose: _ }: { onClose: () => void 
       )}
 
       {/* Empty state */}
-      {!loading && (!data || data.rows.length === 0) && (
+      {!loading && (!data || data.totalProducts === 0) && (
         <div className="flex-1 flex items-center justify-center flex-col gap-4">
           <FileSpreadsheet className="w-12 h-12 text-orange-900" />
           <div className="text-center">
             <p className="text-sm font-bold text-orange-400">No Finale stock data yet</p>
-            <p className="text-xs text-orange-700 mt-1">Export your stock report from Finale and upload it here</p>
-            <p className="text-[10px] text-orange-900 mt-0.5">Finale → Products → Export (CSV)</p>
+            <p className="text-xs text-orange-700 mt-1">Sync from Finale API or upload a CSV export</p>
           </div>
-          <label className="btn-primary text-xs cursor-pointer flex items-center gap-2">
-            <Upload className="w-3.5 h-3.5" />
-            Upload Finale CSV
-            <input type="file" accept=".csv" className="hidden"
-              onChange={e => { const f = e.target.files?.[0]; if (f) uploadCsv(f) }} />
-          </label>
+          <button onClick={syncFromApi} disabled={syncing} className="btn-primary text-xs flex items-center gap-2">
+            <Zap className="w-3.5 h-3.5" />Sync from Finale
+          </button>
         </div>
       )}
 
@@ -202,7 +208,7 @@ export default function FinaleReportPanel({ onClose: _ }: { onClose: () => void 
       )}
 
       {/* Table */}
-      {!loading && filtered.length > 0 && (
+      {!loading && data && data.rows.length > 0 && (
         <div className="flex-1 overflow-auto">
           <table className="w-full text-xs">
             <thead className="sticky top-0 bg-[#0d0a07] z-10">
@@ -215,7 +221,7 @@ export default function FinaleReportPanel({ onClose: _ }: { onClose: () => void 
               </tr>
             </thead>
             <tbody className="divide-y divide-orange-900/10">
-              {filtered.map((r, i) => (
+              {data.rows.map((r, i) => (
                 <tr key={i} className="hover:bg-orange-500/5 transition-colors">
                   <td className="px-4 py-2 font-mono text-orange-300 font-medium">{r.product_id}</td>
                   <td className="px-4 py-2 text-orange-200/60 max-w-xs truncate">{r.product_name || '—'}</td>
@@ -226,6 +232,24 @@ export default function FinaleReportPanel({ onClose: _ }: { onClose: () => void 
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* Pagination */}
+      {data && totalPages > 1 && (
+        <div className="shrink-0 flex items-center justify-between px-6 py-3 border-t border-orange-900/30 bg-[#0d0a07]">
+          <span className="text-xs text-orange-700">
+            Showing {((page - 1) * PAGE_SIZE) + 1}–{Math.min(page * PAGE_SIZE, data.filteredTotal)} of {data.filteredTotal.toLocaleString()} rows
+          </span>
+          <div className="flex items-center gap-2">
+            <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1} className="btn-ghost h-7 w-7 p-0 justify-center">
+              <ChevronLeft className="w-3.5 h-3.5" />
+            </button>
+            <span className="text-xs text-orange-400">Page {page} / {totalPages}</span>
+            <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages} className="btn-ghost h-7 w-7 p-0 justify-center">
+              <ChevronRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
         </div>
       )}
     </div>
