@@ -104,7 +104,7 @@ export default function Dashboard() {
   const { stats, byType, recentActivity, hotBins } = statsData!
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#0a0c10]">
+    <div className="h-screen flex flex-col bg-[#0a0c10] overflow-hidden">
       {/* Top nav — orange gradient border */}
       <header className="h-16 border-b border-orange-900/40 bg-gradient-to-r from-[#0d0a07] via-[#12100d] to-[#0d0a07] flex items-center px-6 gap-5 sticky top-0 z-30">
         <div className="flex items-center gap-3">
@@ -180,7 +180,7 @@ export default function Dashboard() {
         </div>
       ) : activeTab === 'home' ? (
         /* ── Pure Home tab: image fills the full viewport rectangle ── */
-        <div className="flex-1 overflow-hidden" style={{ height: 'calc(100vh - 64px)' }}>
+        <div className="flex-1 overflow-hidden min-h-0">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src="/nami-bg.png"
