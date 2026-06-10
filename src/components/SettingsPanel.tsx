@@ -19,6 +19,11 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
   const [googleJson, setGoogleJson] = useState('')
   const [sheetId, setSheetId] = useState('')
   const [sheetTab, setSheetTab] = useState('Sheet1')
+  const [finaleAccount, setFinaleAccount] = useState('')
+  const [finaleUsername, setFinaleUsername] = useState('')
+  const [finalePassword, setFinalePassword] = useState('')
+  const [testingFinale, setTestingFinale] = useState(false)
+  const [finaleResult, setFinaleResult] = useState<{ ok: boolean; msg: string } | null>(null)
 
   useEffect(() => {
     fetch('/api/settings').then(r => r.json()).then(data => {
@@ -28,6 +33,42 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
       setLoading(false)
     })
   }, [])
+
+  const saveFinale = async () => {
+    setSaving(true)
+    setSaved(false)
+    const body: Record<string, string> = {}
+    if (finaleAccount.trim()) body.finale_account = finaleAccount.trim()
+    if (finaleUsername.trim()) body.finale_username = finaleUsername.trim()
+    if (finalePassword.trim()) body.finale_password = finalePassword.trim()
+    await fetch('/api/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    setSaving(false)
+    setSaved(true)
+    setTimeout(() => setSaved(false), 3000)
+    const res = await fetch('/api/settings')
+    const updated = await res.json()
+    setSettings(updated)
+    setFinaleAccount('')
+    setFinaleUsername('')
+    setFinalePassword('')
+  }
+
+  const testFinaleConnection = async () => {
+    setTestingFinale(true)
+    setFinaleResult(null)
+    try {
+      const res = await fetch('/api/finale/test-connection')
+      const data = await res.json()
+      setFinaleResult(data)
+    } catch (err) {
+      setFinaleResult({ ok: false, msg: (err as Error).message })
+    }
+    setTestingFinale(false)
+  }
 
   const save = async () => {
     setSaving(true)
@@ -88,11 +129,69 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
 
       <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-6">
 
-        {/* Finale Status */}
-        <Section icon={<Database className="w-4 h-4" />} title="Finale Inventory" status={settings._env_finale_account ? 'connected' : 'not configured'}>
-          <p className="text-xs text-orange-300/50">
-            Finale credentials are configured in <code className="text-orange-400">.env.local</code>. Account: <span className="text-orange-300">{settings._env_finale_account === 'set' ? 'configured' : 'not set'}</span>
-          </p>
+        {/* Finale Credentials */}
+        <Section icon={<Database className="w-4 h-4" />} title="Finale Inventory" status={settings._env_finale_account === 'set' ? 'connected' : 'not configured'}>
+          <div className="space-y-3">
+            <div>
+              <label className="text-[10px] font-bold text-orange-700 uppercase tracking-[0.2em] block mb-1.5">Account Name</label>
+              <input
+                className="input w-full"
+                placeholder={settings._env_finale_account === 'set' ? '••• configured •••' : 'e.g. deltamunchies'}
+                value={finaleAccount}
+                onChange={e => setFinaleAccount(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="text-[10px] font-bold text-orange-700 uppercase tracking-[0.2em] block mb-1.5">API Username</label>
+              <input
+                className="input w-full"
+                placeholder={settings._env_finale_username === 'set' ? '••• configured •••' : 'API username'}
+                value={finaleUsername}
+                onChange={e => setFinaleUsername(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="text-[10px] font-bold text-orange-700 uppercase tracking-[0.2em] block mb-1.5">API Password</label>
+              <input
+                type="password"
+                className="input w-full"
+                placeholder={settings._env_finale_password === 'set' ? '••• configured •••' : 'API password'}
+                value={finalePassword}
+                onChange={e => setFinalePassword(e.target.value)}
+              />
+            </div>
+            <p className="text-[10px] text-orange-900">
+              Find these in Finale → Admin → API Keys. The account name is your Finale subdomain (e.g. <code className="text-orange-700">deltamunchies</code>).
+            </p>
+            <div className="flex items-center gap-3 pt-1">
+              <button
+                onClick={saveFinale}
+                disabled={saving || (!finaleAccount && !finaleUsername && !finalePassword)}
+                className="btn-primary text-xs"
+              >
+                {saving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                Save Credentials
+              </button>
+              <button onClick={testFinaleConnection} disabled={testingFinale} className="btn-ghost text-xs">
+                {testingFinale ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+                Test Connection
+              </button>
+              {saved && (
+                <span className="text-xs text-emerald-400 flex items-center gap-1">
+                  <CheckCircle2 className="w-3.5 h-3.5" /> Saved
+                </span>
+              )}
+            </div>
+            {finaleResult && (
+              <div className={cn('card p-3 mt-2', finaleResult.ok ? 'border-emerald-500/20' : 'border-red-500/20')}>
+                <div className={cn('flex items-center gap-2 text-xs font-bold uppercase', finaleResult.ok ? 'text-emerald-400' : 'text-red-400')}>
+                  {finaleResult.ok ? <CheckCircle2 className="w-3.5 h-3.5" /> : <AlertCircle className="w-3.5 h-3.5" />}
+                  {finaleResult.ok ? 'Connected' : 'Failed'}
+                </div>
+                <p className={cn('text-xs mt-1', finaleResult.ok ? 'text-orange-200/60' : 'text-red-300')}>{finaleResult.msg}</p>
+              </div>
+            )}
+          </div>
         </Section>
 
         {/* Google Sheets */}
