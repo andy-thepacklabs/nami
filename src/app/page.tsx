@@ -179,16 +179,14 @@ export default function Dashboard() {
           <FinaleReportPanel onClose={() => setActiveTab('dashboard')} />
         </div>
       ) : activeTab === 'home' ? (
-        /* ── Pure Home tab: full-bleed Nami art, zero UI chrome ── */
-        <div className="flex-1 relative overflow-hidden">
+        /* ── Pure Home tab: full image visible, no crop ── */
+        <div className="flex-1 bg-[#0a0c10] flex items-center justify-center overflow-hidden">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src="/nami-bg.png"
             alt="Nami"
-            className="absolute inset-0 w-full h-full object-cover object-center"
+            className="w-full h-full object-contain"
           />
-          {/* Subtle bottom fade into app chrome */}
-          <div className="absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-t from-[#0a0c10] to-transparent" />
         </div>
       ) : (
         /* ── Dashboard tab: compact stats + activity ── */
