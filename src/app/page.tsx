@@ -43,8 +43,11 @@ interface WohRow { product_id: string; product_name: string | null; qoh: number;
 type SleeveRow = WohRow
 
 export default function Dashboard() {
-  const [activeTab, setActiveTab] = useState<'home' | 'dashboard' | 'reconcile' | 'cyclecount' | 'finalereport'>('home')
+  const [activeTab, setActiveTab] = useState<'home' | 'dashboard' | 'reconcile' | 'cyclecount' | 'finalereport' | 'label'>('home')
   const [wohTab, setWohTab] = useState<'sleeve' | 'display' | 'mylar' | 'tube' | 'cone' | null>(null)
+  const [labelRows, setLabelRows] = useState<WohRow[]>([])
+  const [labelLoading, setLabelLoading] = useState(false)
+  const [labelSearch, setLabelSearch] = useState('')
   const [sleeveRows, setSleeveRows] = useState<WohRow[]>([])
   const [sleeveLoading, setSleeveLoading] = useState(false)
   const [displayRows, setDisplayRows] = useState<WohRow[]>([])
@@ -164,6 +167,20 @@ export default function Dashboard() {
           >
             <FileSpreadsheet className="w-3.5 h-3.5 inline mr-1.5 -mt-0.5" />Finale Report
           </button>
+          <button
+            onClick={() => {
+              setActiveTab('label')
+              if (labelRows.length === 0 && !labelLoading) {
+                setLabelLoading(true)
+                fetch('/api/woh/labels').then(r => r.json()).then(d => { setLabelRows(d.rows || []); setLabelLoading(false) })
+              }
+            }}
+            className={cn('px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wide transition-colors',
+              activeTab === 'label' ? 'bg-orange-500/15 text-orange-400' : 'text-orange-800 hover:text-orange-400'
+            )}
+          >
+            <Package className="w-3.5 h-3.5 inline mr-1.5 -mt-0.5" />Label
+          </button>
         </div>
 
         <div className="flex-1" />
@@ -193,6 +210,91 @@ export default function Dashboard() {
       ) : activeTab === 'finalereport' ? (
         <div className="flex-1 flex flex-col overflow-hidden">
           <FinaleReportPanel onClose={() => setActiveTab('dashboard')} />
+        </div>
+      ) : activeTab === 'label' ? (
+        <div className="flex-1 flex flex-col overflow-hidden">
+          {/* Header */}
+          <div className="px-6 py-3 border-b border-orange-900/30 bg-[#0d0a07] flex items-center gap-4 shrink-0">
+            <span className="text-xs font-bold uppercase tracking-widest text-orange-500">Label Inventory</span>
+            {!labelLoading && <span className="text-[10px] text-orange-800">{labelRows.length} SKUs</span>}
+            <div className="flex-1" />
+            <div className="flex items-center gap-2 bg-[#12100d] border border-orange-900/30 rounded-lg px-3 py-1.5">
+              <Search className="w-3.5 h-3.5 text-orange-700 shrink-0" />
+              <input
+                className="bg-transparent text-xs text-orange-200 placeholder-orange-900 outline-none w-48"
+                placeholder="Search product ID or name..."
+                value={labelSearch}
+                onChange={e => setLabelSearch(e.target.value)}
+              />
+              {labelSearch && <button onClick={() => setLabelSearch('')} className="text-orange-800 hover:text-orange-500 text-xs">✕</button>}
+            </div>
+            <button
+              onClick={() => { setLabelLoading(true); fetch('/api/woh/labels').then(r => r.json()).then(d => { setLabelRows(d.rows || []); setLabelLoading(false) }) }}
+              disabled={labelLoading}
+              className="btn-ghost w-8 h-8 p-0 justify-center rounded-lg"
+              title="Refresh"
+            >
+              <RefreshCw className={cn('w-3.5 h-3.5', labelLoading && 'animate-spin')} />
+            </button>
+          </div>
+          {/* Table */}
+          <div className="flex-1 overflow-auto">
+            {labelLoading ? (
+              <div className="flex items-center justify-center h-32 gap-2 text-orange-800 text-xs">
+                <RefreshCw className="w-4 h-4 animate-spin" /> Loading...
+              </div>
+            ) : labelRows.length === 0 ? (
+              <div className="flex items-center justify-center h-32 text-xs text-orange-900">
+                No LBL- items found. Upload a Finale stock CSV first.
+              </div>
+            ) : (
+              <table className="w-full text-xs">
+                <thead className="sticky top-0 bg-[#0d0a07] z-10">
+                  <tr className="border-b border-orange-900/30">
+                    <th className="text-left px-4 py-3 text-[10px] font-bold uppercase tracking-[0.15em] text-orange-700">Product ID</th>
+                    <th className="text-right px-4 py-3 text-[10px] font-bold uppercase tracking-[0.15em] text-orange-700">Stock QoH</th>
+                    <th className="text-right px-4 py-3 text-[10px] font-bold uppercase tracking-[0.15em] text-orange-700">Stock Available</th>
+                    <th className="text-right px-4 py-3 text-[10px] font-bold uppercase tracking-[0.15em] text-orange-700">Consumed 90d</th>
+                    <th className="text-right px-4 py-3 text-[10px] font-bold uppercase tracking-[0.15em] text-orange-700">Monthly Required</th>
+                    <th className="text-right px-4 py-3 text-[10px] font-bold uppercase tracking-[0.15em] text-orange-700">Wk On Hand</th>
+                    <th className="text-right px-4 py-3 text-[10px] font-bold uppercase tracking-[0.15em] text-orange-700">Wk On Hand (Total)</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-orange-900/20">
+                  {(labelSearch
+                    ? labelRows.filter(r => r.product_id.toLowerCase().includes(labelSearch.toLowerCase()) || (r.product_name || '').toLowerCase().includes(labelSearch.toLowerCase()))
+                    : labelRows
+                  ).map(row => {
+                    const monthlyRequired = row.consumed_90d != null && row.consumed_90d > 0 ? row.consumed_90d / 3 : null
+                    const wohQoh = monthlyRequired != null && row.qoh > 0 ? (row.qoh / monthlyRequired) * 4.33 : null
+                    const wohAvailable = monthlyRequired != null && row.available > 0 ? (row.available / monthlyRequired) * 4.33 : null
+                    return (
+                      <tr key={row.product_id} className="hover:bg-orange-500/5 transition-colors">
+                        <td className="px-4 py-2.5">
+                          <div className="font-mono font-semibold text-orange-300">{row.product_id}</div>
+                          {row.product_name && <div className="text-[10px] text-orange-800 truncate max-w-[260px]">{row.product_name}</div>}
+                        </td>
+                        <td className="px-4 py-2.5 text-right font-mono tabular-nums text-white font-bold">{row.qoh.toLocaleString()}</td>
+                        <td className="px-4 py-2.5 text-right font-mono tabular-nums text-emerald-400">{row.available.toLocaleString()}</td>
+                        <td className="px-4 py-2.5 text-right font-mono tabular-nums text-amber-400">
+                          {row.consumed_90d != null ? Math.round(row.consumed_90d).toLocaleString() : '—'}
+                        </td>
+                        <td className="px-4 py-2.5 text-right font-mono tabular-nums text-orange-300">
+                          {monthlyRequired != null ? Math.round(monthlyRequired).toLocaleString() : '—'}
+                        </td>
+                        <td className="px-4 py-2.5 text-right font-mono tabular-nums text-sky-400">
+                          {wohQoh != null ? wohQoh.toFixed(1) : '—'}
+                        </td>
+                        <td className="px-4 py-2.5 text-right font-mono tabular-nums text-sky-300">
+                          {wohAvailable != null ? wohAvailable.toFixed(1) : '—'}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
         </div>
       ) : activeTab === 'home' ? (
         /* ── Pure Home tab: full artwork centered, black background ── */
