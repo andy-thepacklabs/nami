@@ -33,11 +33,14 @@ function ensureTable(db: ReturnType<typeof getDb>) {
       product_id   TEXT NOT NULL,
       bin_location TEXT NOT NULL DEFAULT '',
       product_name TEXT,
+      category     TEXT,
       qoh          REAL NOT NULL DEFAULT 0,
       imported_at  TEXT NOT NULL DEFAULT (datetime('now')),
       PRIMARY KEY (product_id, bin_location)
     )
   `)
+  // Add category column if upgrading from older schema
+  try { db.exec(`ALTER TABLE finale_stock_csv ADD COLUMN category TEXT`) } catch { /* already exists */ }
 }
 
 export async function POST(req: NextRequest) {
@@ -67,6 +70,7 @@ export async function POST(req: NextRequest) {
   const qohCol  = findCol(headers, 'stock: qoh', 'qoh', 'qty on hand', 'qty_on_hand', 'on hand', 'onhand')
   const nameCol = findCol(headers, 'description', 'name', 'product name', 'internal name')
   const binCol  = findCol(headers, 'sublocation', 'sub-location', 'bin location', 'bin', 'location')
+  const catCol  = findCol(headers, 'category', 'product category', 'cat')
 
   if (pidCol === -1) return NextResponse.json({ error: `Missing Product ID column. Found: [${headers.join(', ')}]` }, { status: 400 })
   if (qohCol === -1) return NextResponse.json({ error: `Missing Stock: QoH column. Found: [${headers.join(', ')}]` }, { status: 400 })
@@ -76,27 +80,29 @@ export async function POST(req: NextRequest) {
   db.exec(`DELETE FROM finale_stock_csv`)
 
   const ins = db.prepare(`
-    INSERT OR REPLACE INTO finale_stock_csv (product_id, bin_location, product_name, qoh, imported_at)
-    VALUES (?, ?, ?, ?, datetime('now'))
+    INSERT OR REPLACE INTO finale_stock_csv (product_id, bin_location, product_name, category, qoh, imported_at)
+    VALUES (?, ?, ?, ?, ?, datetime('now'))
   `)
 
   let imported = 0
   let lastPid = ''
   let lastName = ''
+  let lastCat = ''
 
   db.transaction(() => {
     for (const row of rows) {
       const rawPid = row[pidCol]?.trim()
 
       if (rawPid) {
-        // Parent row — store product name, skip QoH (sub-rows have per-bin QoH)
+        // Parent row — store product name + category
         lastPid = rawPid
         lastName = nameCol >= 0 ? (row[nameCol]?.trim() || rawPid) : rawPid
+        lastCat  = catCol  >= 0 ? (row[catCol]?.trim()  || '')     : ''
 
         // If no bin column, store the product-level total directly
         if (binCol === -1) {
           const qoh = parseFloat(row[qohCol]?.replace(/,/g, '').trim())
-          if (!isNaN(qoh) && qoh > 0) { ins.run(lastPid, '', lastName, qoh); imported++ }
+          if (!isNaN(qoh) && qoh > 0) { ins.run(lastPid, '', lastName, lastCat, qoh); imported++ }
         }
         continue
       }
@@ -107,7 +113,7 @@ export async function POST(req: NextRequest) {
       const qoh = parseFloat(row[qohCol]?.replace(/,/g, '').trim())
       if (isNaN(qoh) || qoh <= 0) continue
 
-      ins.run(lastPid, bin, lastName, qoh)
+      ins.run(lastPid, bin, lastName, lastCat, qoh)
       imported++
     }
   })()

@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils'
 interface StockRow {
   product_id: string
   product_name: string
+  category: string
   bin_location: string
   qoh: number
 }
@@ -71,6 +72,7 @@ export default function FinaleReportPanel({ onClose: _ }: { onClose: () => void 
   const filtered = data?.rows.filter(r =>
     !search || r.product_id.toLowerCase().includes(search.toLowerCase()) ||
     r.product_name?.toLowerCase().includes(search.toLowerCase()) ||
+    r.category?.toLowerCase().includes(search.toLowerCase()) ||
     r.bin_location?.toLowerCase().includes(search.toLowerCase())
   ) ?? []
 
@@ -207,6 +209,7 @@ export default function FinaleReportPanel({ onClose: _ }: { onClose: () => void 
               <tr className="border-b border-orange-900/30">
                 <th className="text-left text-[10px] font-bold text-orange-700 px-4 py-3 uppercase tracking-[0.15em]">Product ID</th>
                 <th className="text-left text-[10px] font-bold text-orange-700 px-4 py-3 uppercase tracking-[0.15em]">Description</th>
+                <th className="text-left text-[10px] font-bold text-orange-700 px-4 py-3 uppercase tracking-[0.15em]">Category</th>
                 <th className="text-left text-[10px] font-bold text-orange-700 px-4 py-3 uppercase tracking-[0.15em]">Sublocations (configurable)</th>
                 <th className="text-right text-[10px] font-bold text-orange-700 px-4 py-3 uppercase tracking-[0.15em]">Stock: QoH</th>
               </tr>
@@ -216,6 +219,7 @@ export default function FinaleReportPanel({ onClose: _ }: { onClose: () => void 
                 <tr key={i} className="hover:bg-orange-500/5 transition-colors">
                   <td className="px-4 py-2 font-mono text-orange-300 font-medium">{r.product_id}</td>
                   <td className="px-4 py-2 text-orange-200/60 max-w-xs truncate">{r.product_name || '—'}</td>
+                  <td className="px-4 py-2 text-orange-400/70 text-xs">{r.category || '—'}</td>
                   <td className="px-4 py-2 font-mono text-orange-400">{r.bin_location || '—'}</td>
                   <td className="px-4 py-2 text-right font-mono font-bold text-white tabular-nums">{r.qoh}</td>
                 </tr>
