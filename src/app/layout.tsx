@@ -4,6 +4,7 @@ import './globals.css'
 export const metadata: Metadata = {
   title: 'Nami — Inventory Navigator',
   description: 'Navigate your inventory with precision',
+  icons: { icon: '/favicon.svg' },
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
