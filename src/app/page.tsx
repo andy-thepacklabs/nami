@@ -39,7 +39,7 @@ interface ListData {
 const REFRESH_INTERVAL = 30_000
 
 export default function Dashboard() {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'reconcile' | 'cyclecount' | 'finalereport'>('dashboard')
+  const [activeTab, setActiveTab] = useState<'home' | 'dashboard' | 'reconcile' | 'cyclecount' | 'finalereport'>('home')
   const [statsData, setStatsData] = useState<StatsData | null>(null)
   const [listData, setListData] = useState<ListData | null>(null)
   const [loading, setLoading] = useState(true)
@@ -125,6 +125,14 @@ export default function Dashboard() {
         {/* Top-level tabs */}
         <div className="flex items-center gap-1 mx-4">
           <button
+            onClick={() => setActiveTab('home')}
+            className={cn('px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wide transition-colors',
+              activeTab === 'home' ? 'bg-orange-500/15 text-orange-400' : 'text-orange-800 hover:text-orange-400'
+            )}
+          >
+            <Anchor className="w-3.5 h-3.5 inline mr-1.5 -mt-0.5" />Home
+          </button>
+          <button
             onClick={() => setActiveTab('dashboard')}
             className={cn('px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wide transition-colors',
               activeTab === 'dashboard' ? 'bg-orange-500/15 text-orange-400' : 'text-orange-800 hover:text-orange-400'
@@ -170,102 +178,76 @@ export default function Dashboard() {
         <div className="flex-1 flex flex-col overflow-hidden">
           <FinaleReportPanel onClose={() => setActiveTab('dashboard')} />
         </div>
-      ) : (
-      <div className="flex-1 relative overflow-hidden">
-        {/* Full-bleed Nami background */}
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src="/nami-bg.png"
-          alt="Nami"
-          className="absolute inset-0 w-full h-full object-cover object-center"
-        />
-        {/* Dark gradient overlay — heavier on left so text pops */}
-        <div className="absolute inset-0 bg-gradient-to-r from-[#0a0c10]/95 via-[#0a0c10]/60 to-transparent" />
-        <div className="absolute inset-0 bg-gradient-to-t from-[#0a0c10]/80 via-transparent to-transparent" />
-
-        {/* Hero content — left side */}
-        <div className="relative z-10 flex flex-col justify-center h-full px-16 max-w-2xl">
-          {/* One Piece / Nami badge */}
-          <div className="flex items-center gap-2 mb-6">
-            <Anchor className="w-4 h-4 text-orange-500" />
-            <span className="text-xs font-bold uppercase tracking-[0.3em] text-orange-500">Straw Hat Pirates</span>
-          </div>
-
-          {/* Title */}
-          <h1 className="text-7xl font-black text-white uppercase tracking-tight leading-none mb-2">
-            NAMI
-          </h1>
-          <p className="text-base text-orange-400/80 italic mb-8 font-medium">
-            &ldquo;The sea connects everything.&rdquo;
-          </p>
-
-          {/* Stats row */}
-          <div className="flex gap-6 mb-10">
-            <div className="text-center">
-              <div className="text-3xl font-black text-orange-400 tabular-nums">
-                {statsData?.stats.total ?? 0}
-              </div>
-              <div className="text-[10px] text-orange-700 uppercase tracking-widest mt-0.5">Issues</div>
-            </div>
-            <div className="w-px bg-orange-900/40" />
-            <div className="text-center">
-              <div className="text-3xl font-black text-red-400 tabular-nums">
-                {statsData?.stats.open ?? 0}
-              </div>
-              <div className="text-[10px] text-orange-700 uppercase tracking-widest mt-0.5">Open</div>
-            </div>
-            <div className="w-px bg-orange-900/40" />
-            <div className="text-center">
-              <div className="text-3xl font-black text-emerald-400 tabular-nums">
-                {statsData?.stats.resolved ?? 0}
-              </div>
-              <div className="text-[10px] text-orange-700 uppercase tracking-widest mt-0.5">Resolved</div>
-            </div>
-            <div className="w-px bg-orange-900/40" />
-            <div className="text-center">
-              <div className="text-3xl font-black text-white tabular-nums">
-                {statsData?.hotBins?.length ?? 0}
-              </div>
-              <div className="text-[10px] text-orange-700 uppercase tracking-widest mt-0.5">Hot Bins</div>
-            </div>
-          </div>
-
-          {/* Action buttons */}
-          <div className="flex flex-wrap gap-3">
-            <button onClick={() => setActiveTab('finalereport')} className="btn-primary px-5 py-2.5 text-sm flex items-center gap-2">
-              <FileSpreadsheet className="w-4 h-4" /> Finale Report
-            </button>
-            <button onClick={() => setShowSheets(true)} className="btn text-sm px-5 py-2.5 bg-orange-600/20 text-orange-400 border border-orange-600/30 hover:bg-orange-600/30 flex items-center gap-2">
-              <ClipboardCheck className="w-4 h-4" /> Cycle Counts
-            </button>
-            <button onClick={() => setShowNew(true)} className="btn-ghost px-5 py-2.5 text-sm flex items-center gap-2">
-              <Plus className="w-4 h-4" /> Log Issue
-            </button>
-          </div>
-
-          {/* Recent activity strip */}
-          {statsData?.recentActivity && statsData.recentActivity.length > 0 && (
-            <div className="mt-10 border-t border-orange-900/30 pt-6">
-              <p className="text-[10px] text-orange-700 uppercase tracking-widest mb-3 flex items-center gap-2">
-                <Clock className="w-3 h-3" /> Recent Activity
-              </p>
-              <div className="flex flex-col gap-2">
-                {statsData.recentActivity.slice(0, 3).map((a, i) => (
-                  <div key={i} className="flex items-center gap-3 text-xs">
-                    <span className={cn('badge text-[10px]', a.priority ? PRIORITY_COLORS[a.priority] : 'badge-orange')}>
-                      {a.priority ? PRIORITY_LABELS[a.priority] : '—'}
-                    </span>
-                    <span className="font-mono text-orange-300 font-medium">{a.sku}</span>
-                    <span className="text-orange-700">·</span>
-                    <span className="text-orange-600">{a.bin_location}</span>
-                    <span className="text-orange-900 ml-auto">{a.created_at ? fmtDelta(a.created_at) : ''}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+      ) : activeTab === 'home' ? (
+        /* ── Pure Home tab: full-bleed Nami art, zero UI chrome ── */
+        <div className="flex-1 relative overflow-hidden">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/nami-bg.png"
+            alt="Nami"
+            className="absolute inset-0 w-full h-full object-cover object-center"
+          />
+          {/* Subtle bottom fade into app chrome */}
+          <div className="absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-t from-[#0a0c10] to-transparent" />
         </div>
-      </div>
+      ) : (
+        /* ── Dashboard tab: compact stats + activity ── */
+        <div className="flex-1 overflow-auto p-6">
+          {/* Stats cards */}
+          <div className="grid grid-cols-4 gap-4 mb-6">
+            <StatCard label="Total Issues" value={statsData?.stats.total ?? 0} icon={<Database className="w-5 h-5" />} color="text-orange-400" bg="bg-orange-500/10" border="border-orange-900/40" />
+            <StatCard label="Open" value={statsData?.stats.open ?? 0} icon={<AlertTriangle className="w-5 h-5" />} color="text-red-400" bg="bg-red-500/10" border="border-red-900/40" pulse={(statsData?.stats.open ?? 0) > 0} />
+            <StatCard label="Resolved" value={statsData?.stats.resolved ?? 0} icon={<CheckCircle2 className="w-5 h-5" />} color="text-emerald-400" bg="bg-emerald-500/10" border="border-emerald-900/40" />
+            <StatCard label="Hot Bins" value={statsData?.hotBins?.length ?? 0} icon={<MapPin className="w-5 h-5" />} color="text-orange-300" bg="bg-orange-500/10" border="border-orange-900/40" />
+          </div>
+
+          {/* Recent activity + hot bins */}
+          <div className="grid grid-cols-2 gap-4">
+            {/* Recent Activity */}
+            <div className="card p-4">
+              <h3 className="text-[10px] font-bold uppercase tracking-widest text-orange-700 mb-3 flex items-center gap-2">
+                <Clock className="w-3 h-3" /> Recent Activity
+              </h3>
+              {statsData?.recentActivity && statsData.recentActivity.length > 0 ? (
+                <div className="flex flex-col divide-y divide-orange-900/20">
+                  {statsData.recentActivity.slice(0, 8).map((a, i) => (
+                    <div key={i} className="flex items-center gap-3 py-2 text-xs">
+                      <span className={cn('badge text-[10px] shrink-0', a.priority ? PRIORITY_COLORS[a.priority] : 'badge-orange')}>
+                        {a.priority ? PRIORITY_LABELS[a.priority] : '—'}
+                      </span>
+                      <span className="font-mono text-orange-300 font-medium truncate">{a.sku}</span>
+                      <span className="text-orange-600 truncate">{a.bin_location}</span>
+                      <span className="text-orange-900 ml-auto whitespace-nowrap">{a.created_at ? fmtDelta(a.created_at) : ''}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-orange-900">No recent activity</p>
+              )}
+            </div>
+
+            {/* Hot Bins */}
+            <div className="card p-4">
+              <h3 className="text-[10px] font-bold uppercase tracking-widest text-orange-700 mb-3 flex items-center gap-2">
+                <MapPin className="w-3 h-3" /> Hot Bins
+              </h3>
+              {statsData?.hotBins && statsData.hotBins.length > 0 ? (
+                <div className="flex flex-col divide-y divide-orange-900/20">
+                  {statsData.hotBins.slice(0, 8).map((b, i) => (
+                    <div key={i} className="flex items-center gap-3 py-2 text-xs">
+                      <span className="font-mono text-orange-400 font-bold w-6 text-right shrink-0">{i + 1}</span>
+                      <span className="font-mono text-orange-300 font-medium flex-1">{b.bin}</span>
+                      <span className="text-orange-600">{b.count} issues</span>
+                      {b.critical_count > 0 && <span className="badge text-[10px] badge-red">{b.critical_count} critical</span>}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-orange-900">No hot bins</p>
+              )}
+            </div>
+          </div>
+        </div>
       )}
 
       {selectedId && <DiscrepancyModal id={selectedId} onClose={() => setSelectedId(null)} onUpdate={refresh} />}
