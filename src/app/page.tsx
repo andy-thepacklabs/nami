@@ -180,12 +180,13 @@ export default function Dashboard() {
         </div>
       ) : activeTab === 'home' ? (
         /* ── Pure Home tab: image fills the full viewport rectangle ── */
-        <div className="flex-1 overflow-hidden min-h-0">
+        <div className="relative flex-1" style={{ minHeight: 0 }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src="/nami-bg.png"
             alt="Nami"
-            style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center top', display: 'block' }}
+            className="absolute inset-0 w-full h-full"
+            style={{ objectFit: 'cover', objectPosition: 'center center' }}
           />
         </div>
       ) : (
