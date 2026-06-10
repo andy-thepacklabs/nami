@@ -179,13 +179,13 @@ export default function Dashboard() {
           <FinaleReportPanel onClose={() => setActiveTab('dashboard')} />
         </div>
       ) : activeTab === 'home' ? (
-        /* ── Pure Home tab: full image visible, no crop ── */
-        <div className="flex-1 bg-[#0a0c10] flex items-center justify-center overflow-hidden">
+        /* ── Pure Home tab: entire artwork visible, no scroll ── */
+        <div className="flex-1 bg-[#0a0c10] flex items-center justify-center overflow-hidden p-0">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src="/nami-bg.png"
             alt="Nami"
-            className="w-full h-full object-contain"
+            style={{ maxWidth: '100%', maxHeight: 'calc(100vh - 64px)', objectFit: 'contain', display: 'block' }}
           />
         </div>
       ) : (
