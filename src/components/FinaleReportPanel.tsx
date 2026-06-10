@@ -207,8 +207,8 @@ export default function FinaleReportPanel({ onClose: _ }: { onClose: () => void 
               <tr className="border-b border-orange-900/30">
                 <th className="text-left text-[10px] font-bold text-orange-700 px-4 py-3 uppercase tracking-[0.15em]">Product ID</th>
                 <th className="text-left text-[10px] font-bold text-orange-700 px-4 py-3 uppercase tracking-[0.15em]">Description</th>
-                <th className="text-left text-[10px] font-bold text-orange-700 px-4 py-3 uppercase tracking-[0.15em]">Bin Location</th>
-                <th className="text-right text-[10px] font-bold text-orange-700 px-4 py-3 uppercase tracking-[0.15em]">QoH</th>
+                <th className="text-left text-[10px] font-bold text-orange-700 px-4 py-3 uppercase tracking-[0.15em]">Sublocations (configurable)</th>
+                <th className="text-right text-[10px] font-bold text-orange-700 px-4 py-3 uppercase tracking-[0.15em]">Stock: QoH</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-orange-900/10">
