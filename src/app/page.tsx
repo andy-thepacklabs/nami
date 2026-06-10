@@ -89,10 +89,13 @@ export default function Dashboard() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#0a0c10]">
-        <div className="flex items-center gap-3">
-          <Compass className="w-6 h-6 animate-spin text-orange-500" />
-          <span className="text-sm font-semibold tracking-wide uppercase text-orange-400">Charting course...</span>
+      <div className="min-h-screen relative overflow-hidden bg-[#0a0c10] flex items-center justify-center">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/nami-bg.png" alt="" className="absolute inset-0 w-full h-full object-cover object-center opacity-30" />
+        <div className="absolute inset-0 bg-[#0a0c10]/70" />
+        <div className="relative z-10 flex flex-col items-center gap-4">
+          <Compass className="w-8 h-8 animate-spin text-orange-500" />
+          <span className="text-sm font-black tracking-[0.3em] uppercase text-orange-400">Charting course...</span>
         </div>
       </div>
     )
@@ -168,13 +171,99 @@ export default function Dashboard() {
           <FinaleReportPanel onClose={() => setActiveTab('dashboard')} />
         </div>
       ) : (
-      <div className="flex-1 overflow-auto p-6 flex items-center justify-center">
-        {/* Dashboard content removed — ready for redesign */}
-        <div className="text-center">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/nami.png" alt="Nami" className="h-32 w-auto mx-auto mb-6 opacity-40" onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
-          <h2 className="text-2xl font-black text-orange-400 uppercase tracking-tight mb-2">Nami Dashboard</h2>
-          <p className="text-sm text-orange-700">Ready for redesign</p>
+      <div className="flex-1 relative overflow-hidden">
+        {/* Full-bleed Nami background */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/nami-bg.png"
+          alt="Nami"
+          className="absolute inset-0 w-full h-full object-cover object-center"
+        />
+        {/* Dark gradient overlay — heavier on left so text pops */}
+        <div className="absolute inset-0 bg-gradient-to-r from-[#0a0c10]/95 via-[#0a0c10]/60 to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-t from-[#0a0c10]/80 via-transparent to-transparent" />
+
+        {/* Hero content — left side */}
+        <div className="relative z-10 flex flex-col justify-center h-full px-16 max-w-2xl">
+          {/* One Piece / Nami badge */}
+          <div className="flex items-center gap-2 mb-6">
+            <Anchor className="w-4 h-4 text-orange-500" />
+            <span className="text-xs font-bold uppercase tracking-[0.3em] text-orange-500">Straw Hat Pirates</span>
+          </div>
+
+          {/* Title */}
+          <h1 className="text-7xl font-black text-white uppercase tracking-tight leading-none mb-2">
+            NAMI
+          </h1>
+          <p className="text-base text-orange-400/80 italic mb-8 font-medium">
+            &ldquo;The sea connects everything.&rdquo;
+          </p>
+
+          {/* Stats row */}
+          <div className="flex gap-6 mb-10">
+            <div className="text-center">
+              <div className="text-3xl font-black text-orange-400 tabular-nums">
+                {statsData?.stats.total ?? 0}
+              </div>
+              <div className="text-[10px] text-orange-700 uppercase tracking-widest mt-0.5">Issues</div>
+            </div>
+            <div className="w-px bg-orange-900/40" />
+            <div className="text-center">
+              <div className="text-3xl font-black text-red-400 tabular-nums">
+                {statsData?.stats.open ?? 0}
+              </div>
+              <div className="text-[10px] text-orange-700 uppercase tracking-widest mt-0.5">Open</div>
+            </div>
+            <div className="w-px bg-orange-900/40" />
+            <div className="text-center">
+              <div className="text-3xl font-black text-emerald-400 tabular-nums">
+                {statsData?.stats.resolved ?? 0}
+              </div>
+              <div className="text-[10px] text-orange-700 uppercase tracking-widest mt-0.5">Resolved</div>
+            </div>
+            <div className="w-px bg-orange-900/40" />
+            <div className="text-center">
+              <div className="text-3xl font-black text-white tabular-nums">
+                {statsData?.hotBins?.length ?? 0}
+              </div>
+              <div className="text-[10px] text-orange-700 uppercase tracking-widest mt-0.5">Hot Bins</div>
+            </div>
+          </div>
+
+          {/* Action buttons */}
+          <div className="flex flex-wrap gap-3">
+            <button onClick={() => setActiveTab('finalereport')} className="btn-primary px-5 py-2.5 text-sm flex items-center gap-2">
+              <FileSpreadsheet className="w-4 h-4" /> Finale Report
+            </button>
+            <button onClick={() => setShowSheets(true)} className="btn text-sm px-5 py-2.5 bg-orange-600/20 text-orange-400 border border-orange-600/30 hover:bg-orange-600/30 flex items-center gap-2">
+              <ClipboardCheck className="w-4 h-4" /> Cycle Counts
+            </button>
+            <button onClick={() => setShowNew(true)} className="btn-ghost px-5 py-2.5 text-sm flex items-center gap-2">
+              <Plus className="w-4 h-4" /> Log Issue
+            </button>
+          </div>
+
+          {/* Recent activity strip */}
+          {statsData?.recentActivity && statsData.recentActivity.length > 0 && (
+            <div className="mt-10 border-t border-orange-900/30 pt-6">
+              <p className="text-[10px] text-orange-700 uppercase tracking-widest mb-3 flex items-center gap-2">
+                <Clock className="w-3 h-3" /> Recent Activity
+              </p>
+              <div className="flex flex-col gap-2">
+                {statsData.recentActivity.slice(0, 3).map((a, i) => (
+                  <div key={i} className="flex items-center gap-3 text-xs">
+                    <span className={cn('badge text-[10px]', a.priority ? PRIORITY_COLORS[a.priority] : 'badge-orange')}>
+                      {a.priority ? PRIORITY_LABELS[a.priority] : '—'}
+                    </span>
+                    <span className="font-mono text-orange-300 font-medium">{a.sku}</span>
+                    <span className="text-orange-700">·</span>
+                    <span className="text-orange-600">{a.bin_location}</span>
+                    <span className="text-orange-900 ml-auto">{a.created_at ? fmtDelta(a.created_at) : ''}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
       )}
