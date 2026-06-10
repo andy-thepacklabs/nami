@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { getDb } from '@/lib/db'
 
 export const dynamic = 'force-dynamic'
+export const maxDuration = 60 // seconds
 
 function getCredentials() {
   const account  = process.env.FINALE_ACCOUNT?.trim() || ''
@@ -24,6 +25,48 @@ async function finaleGet(path: string): Promise<{ status: number; data: unknown 
   return { status: res.status, data }
 }
 
+async function finaleGraphQL(query: string): Promise<unknown> {
+  const { account, base64 } = getCredentials()
+  const url = `https://app.finaleinventory.com/${account}/api/graphql`
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      Authorization: `Basic ${base64}`,
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    },
+    body: JSON.stringify({ query }),
+    signal: AbortSignal.timeout(30_000),
+  })
+  if (!res.ok) throw new Error(`GraphQL HTTP ${res.status}`)
+  return res.json()
+}
+
+// Parse sublocation summary string like "A1-01 (10), A1-02 (5)" or "A1-01:10, A1-02:5"
+function parseSublocationSummary(summary: string | null | undefined): Array<{ bin: string; qty: number }> {
+  if (!summary || typeof summary !== 'string') return []
+  const result: Array<{ bin: string; qty: number }> = []
+
+  // Try format: "BinName (qty)" — e.g. "A1-01 (10)"
+  const parensPattern = /([^,()]+?)\s*\((\d+(?:\.\d+)?)\)/g
+  let m: RegExpExecArray | null
+  while ((m = parensPattern.exec(summary)) !== null) {
+    const bin = m[1].trim()
+    const qty = parseFloat(m[2])
+    if (bin && !isNaN(qty) && qty > 0) result.push({ bin, qty })
+  }
+  if (result.length > 0) return result
+
+  // Try format: "BinName:qty" — e.g. "A1-01:10"
+  const colonPattern = /([^,:]+?)\s*:\s*(\d+(?:\.\d+)?)/g
+  while ((m = colonPattern.exec(summary)) !== null) {
+    const bin = m[1].trim()
+    const qty = parseFloat(m[2])
+    if (bin && !isNaN(qty) && qty > 0) result.push({ bin, qty })
+  }
+  return result
+}
+
 // GET: inspect raw Finale field names (for debugging)
 export async function GET() {
   const { account } = getCredentials()
@@ -31,13 +74,21 @@ export async function GET() {
   const res = await finaleGet('product?limit=2')
   const raw = res.data as Record<string, unknown>
   const fields = raw && typeof raw === 'object' ? Object.keys(raw) : []
-  // Show first row values for each field
   const sample: Record<string, unknown> = {}
   for (const f of fields) {
     const arr = raw[f]
     sample[f] = Array.isArray(arr) ? arr[0] : arr
   }
   return NextResponse.json({ status: res.status, fields, sample })
+}
+
+interface GqlProductNode {
+  productId: string
+  description: string
+  category: string
+  status: string
+  unitsInStock: string | number | null   // GraphQL returns this as a string e.g. "70040"
+  stockSublocationSummary: string | null
 }
 
 export async function POST() {
@@ -58,11 +109,128 @@ export async function POST() {
       PRIMARY KEY (product_id, bin_location)
     )
   `)
-  // Migrate older schemas that are missing category
   try { db.exec(`ALTER TABLE finale_stock_csv ADD COLUMN category TEXT`) } catch { /* already exists */ }
 
-  // Step 1: Fetch ALL products with full detail (includes category field)
-  // Using /product/ with empty-ish query returns columnar data with category
+  // --- Try GraphQL path first ---
+  try {
+    const allProducts: GqlProductNode[] = []
+    let hasNextPage = true
+    let cursor: string | null = null
+    const PAGE = 200
+
+    while (hasNextPage) {
+      const afterArg = cursor ? `, after: "${cursor}"` : ''
+      const query = `{
+        productViewConnection(first: ${PAGE}${afterArg}) {
+          pageInfo { hasNextPage endCursor }
+          edges {
+            node {
+              productId
+              description
+              category
+              status
+              unitsInStock
+              stockSublocationSummary
+            }
+          }
+        }
+      }`
+
+      const result = await finaleGraphQL(query) as {
+        data?: {
+          productViewConnection?: {
+            pageInfo: { hasNextPage: boolean; endCursor: string }
+            edges: Array<{ node: GqlProductNode }>
+          }
+        }
+        errors?: Array<{ message: string }>
+      }
+
+      if (result.errors?.length) {
+        throw new Error(result.errors[0].message)
+      }
+
+      const conn = result.data?.productViewConnection
+      if (!conn) throw new Error('No productViewConnection in GraphQL response')
+
+      for (const edge of conn.edges) {
+        allProducts.push(edge.node)
+      }
+
+      hasNextPage = conn.pageInfo.hasNextPage
+      cursor = conn.pageInfo.endCursor
+    }
+
+    // Filter inactive
+    let skipped = 0
+    const activeProducts = allProducts.filter(p => {
+      const s = (p.status || '').toUpperCase()
+      if (s === 'PRODUCT_INACTIVE' || s === 'INACTIVE') { skipped++; return false }
+      return true
+    })
+
+    if (activeProducts.length === 0) {
+      return NextResponse.json({ error: 'No active products found in Finale.' }, { status: 500 })
+    }
+
+    // Detect if we have any real sublocation data
+    const hasSublocs = activeProducts.some(p => p.stockSublocationSummary && p.stockSublocationSummary.trim() !== '')
+
+    db.prepare('DELETE FROM finale_stock_csv').run()
+    const ins = db.prepare(`
+      INSERT OR REPLACE INTO finale_stock_csv (product_id, bin_location, product_name, category, qoh, imported_at)
+      VALUES (?, ?, ?, ?, ?, datetime('now'))
+    `)
+
+    let imported = 0
+
+    db.exec('BEGIN')
+    try {
+      for (const p of activeProducts) {
+        const pid  = (p.productId || '').trim()
+        const name = (p.description || '').trim()
+        const cat  = (p.category || '').trim()
+        if (!pid) continue
+
+        if (hasSublocs && p.stockSublocationSummary) {
+          const bins = parseSublocationSummary(p.stockSublocationSummary)
+          if (bins.length > 0) {
+            for (const { bin, qty } of bins) {
+              ins.run(pid, bin, name, cat, qty)
+              imported++
+            }
+            continue
+          }
+        }
+
+        // No sublocation data — store product total
+        const qoh = parseFloat(String(p.unitsInStock ?? '0')) || 0
+        ins.run(pid, '', name, cat, qoh)
+        imported++
+      }
+      db.exec('COMMIT')
+    } catch (e) {
+      db.exec('ROLLBACK')
+      throw e
+    }
+
+    return NextResponse.json({
+      ok: true,
+      source: 'graphql',
+      products: activeProducts.length,
+      imported,
+      skipped,
+      note: hasSublocs ? `QoH & sublocations synced from Finale ✓` : `QoH synced ✓ — no sublocation data in Finale`,
+    })
+
+  } catch (gqlErr) {
+    const errMsg = gqlErr instanceof Error ? gqlErr.message : String(gqlErr)
+    console.warn('[sync] GraphQL failed, falling back to REST:', errMsg)
+    // REST fallback will run below — attach error to note
+    ;(globalThis as Record<string, unknown>).__lastGqlError = errMsg
+  }
+
+  // --- Fallback: REST product API (category + product names only, QoH=0) ---
   const prodRes = await finaleGet('product?limit=5000')
   if (prodRes.status !== 200) {
     return NextResponse.json({ error: `Finale API returned ${prodRes.status}. Check your credentials.` }, { status: 500 })
@@ -74,7 +242,6 @@ export async function POST() {
   const statusIds    = (raw.statusId     || raw.status || []) as string[]
   const categories   = (raw.category     || []) as string[]
 
-  // Build active product map: pid -> { name, category }
   const productMap = new Map<string, { name: string; category: string }>()
   let skipped = 0
   for (let i = 0; i < productIds.length; i++) {
@@ -82,47 +249,13 @@ export async function POST() {
     if (!pid) continue
     const status = (statusIds[i] || '').toString().toUpperCase()
     if (status === 'PRODUCT_INACTIVE' || status === 'INACTIVE') { skipped++; continue }
-    productMap.set(pid, {
-      name: productNames[i] || '',
-      category: categories[i] || '',
-    })
+    productMap.set(pid, { name: productNames[i] || '', category: categories[i] || '' })
   }
 
   if (productMap.size === 0) {
     return NextResponse.json({ error: 'No active products found in Finale.' }, { status: 500 })
   }
 
-  // Step 2: Try inventorylevel for per-bin QoH
-  const invRes = await finaleGet('inventorylevel')
-  if (invRes.status === 200 && invRes.data) {
-    const invRaw = invRes.data as Record<string, unknown[]>
-    let invRows: InventoryLevel[] = []
-
-    if (Array.isArray(invRes.data)) {
-      invRows = invRes.data as InventoryLevel[]
-    } else if (invRaw && Array.isArray(invRaw.productId)) {
-      const ids  = invRaw.productId as string[]
-      const bins = (invRaw.subLocation || invRaw.sublocation || invRaw.binLocation || invRaw.locationId || []) as string[]
-      const qohs = (invRaw.quantityOnHand || invRaw.qtyOnHand || invRaw.qoh || invRaw.quantity || []) as number[]
-      invRows = ids.map((pid, i) => ({
-        productId: pid,
-        subLocation: bins[i] || '',
-        quantityOnHand: Number(qohs[i]) || 0,
-      }))
-    }
-
-    // Filter to active products only and import
-    const activeRows = invRows.filter(r => {
-      const pid = (r.productId || r.product_id || '').trim()
-      return productMap.has(pid)
-    })
-
-    if (activeRows.length > 0) {
-      return importInventoryLevel(db, activeRows, productMap, skipped)
-    }
-  }
-
-  // Step 3: inventorylevel not available — import products with category but QoH=0
   db.prepare('DELETE FROM finale_stock_csv').run()
   const ins = db.prepare(`
     INSERT OR REPLACE INTO finale_stock_csv (product_id, bin_location, product_name, category, qoh, imported_at)
@@ -133,78 +266,10 @@ export async function POST() {
   }
   return NextResponse.json({
     ok: true,
-    source: 'product-api',
+    source: 'rest-fallback',
     products: productMap.size,
     imported: productMap.size,
     skipped,
-    note: 'Category synced ✓ — QoH & sublocations require a Finale CSV export upload',
+    note: `Category synced ✓ — GraphQL error: ${(globalThis as Record<string, unknown>).__lastGqlError ?? 'unknown'}`,
   })
-}
-
-interface InventoryLevel {
-  productId?: string; product_id?: string
-  subLocation?: string; sub_location?: string; binLocation?: string
-  quantityOnHand?: number; quantity_on_hand?: number; qoh?: number
-}
-
-interface Product {
-  productId?: string; product_id?: string; sku?: string
-  description?: string; name?: string
-  quantityOnHand?: number; quantity_on_hand?: number; qoh?: number; stockQoh?: number
-  active?: unknown; status?: unknown; productStatus?: unknown; enabled?: unknown
-}
-
-function importInventoryLevel(
-  db: ReturnType<typeof getDb>,
-  rows: InventoryLevel[],
-  productMap: Map<string, { name: string; category: string }>,
-  skipped: number
-) {
-  db.prepare('DELETE FROM finale_stock_csv').run()
-  const ins = db.prepare(`
-    INSERT OR REPLACE INTO finale_stock_csv (product_id, bin_location, product_name, category, qoh, imported_at)
-    VALUES (?, ?, ?, ?, ?, datetime('now'))
-  `)
-  let count = 0
-  for (const r of rows) {
-    const pid = (r.productId || r.product_id || '').trim()
-    const bin = (r.subLocation || r.sub_location || r.binLocation || '').trim()
-    const qoh = r.quantityOnHand ?? r.quantity_on_hand ?? r.qoh ?? 0
-    if (!pid || qoh <= 0) continue
-    const { name, category } = productMap.get(pid) || { name: '', category: '' }
-    ins.run(pid, bin, name, category, qoh)
-    count++
-  }
-  const products = new Set(rows.map(r => r.productId || r.product_id).filter(Boolean)).size
-  return NextResponse.json({ ok: true, source: 'inventorylevel', imported: count, products, skipped })
-}
-
-function isActive(r: Product): boolean {
-  const val = r.active ?? r.status ?? r.productStatus ?? r.enabled
-  if (val === undefined || val === null) return true // no status field = assume active
-  if (typeof val === 'boolean') return val
-  const s = String(val).toLowerCase().trim()
-  // Treat these as inactive
-  return !['false', '0', 'inactive', 'disabled', 'no', 'n'].includes(s)
-}
-
-function importProducts(db: ReturnType<typeof getDb>, rows: Product[]) {
-  db.prepare('DELETE FROM finale_stock_csv').run()
-  const ins = db.prepare(`
-    INSERT OR REPLACE INTO finale_stock_csv (product_id, bin_location, product_name, category, qoh, imported_at)
-    VALUES (?, ?, ?, ?, ?, datetime('now'))
-  `)
-  let count = 0
-  let skipped = 0
-  for (const r of rows) {
-    const pid = (r.productId || r.product_id || r.sku || '').trim()
-    const name = (r.description || r.name || '').trim()
-    const cat  = (r.category as string || '').trim()
-    const qoh = r.quantityOnHand ?? r.quantity_on_hand ?? r.stockQoh ?? r.qoh ?? 0
-    if (!pid) continue
-    if (!isActive(r)) { skipped++; continue }
-    ins.run(pid, '', name, cat, qoh)
-    count++
-  }
-  return NextResponse.json({ ok: true, source: 'product', imported: count, products: count, skipped, note: 'No per-bin breakdown — product totals only' })
 }

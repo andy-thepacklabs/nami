@@ -5,10 +5,7 @@ const nextConfig = {
       { protocol: 'https', hostname: 'thepacklabs.com' },
     ],
   },
-  allowedDevHosts: [
-    '.ngrok-free.app',
-    '.ngrok.io',
-  ],
+  devIndicators: false,
 }
 
 module.exports = nextConfig

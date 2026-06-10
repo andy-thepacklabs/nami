@@ -2,19 +2,18 @@ import { NextResponse } from 'next/server'
 
 export const dynamic = 'force-dynamic'
 
-// Finale uses session-based auth: POST /api/session to login, get cookie, then use cookie
-export async function finaleLogin(account: string, username: string, password: string) {
-  const loginUrl = `https://app.finaleinventory.com/${account}/api/session`
-  const res = await fetch(loginUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ username, password }).toString(),
-    redirect: 'manual',
-    signal: AbortSignal.timeout(10_000),
-  })
-  // Extract Set-Cookie header
-  const cookie = res.headers.get('set-cookie')
-  return { status: res.status, cookie }
+// Strip full URL if user pasted it
+export function normalizeAccount(raw: string): string {
+  let s = raw.trim().replace(/[/?#]+$/, '')
+  if (s.startsWith('http')) {
+    try {
+      const u = new URL(s)
+      s = u.pathname.replace(/^\//, '').replace(/\/$/, '')
+    } catch {
+      s = s.replace(/^https?:\/\/[^/]+\//, '').replace(/\/$/, '')
+    }
+  }
+  return s
 }
 
 export async function GET() {
@@ -29,43 +28,51 @@ export async function GET() {
     })
   }
 
-  try {
-    // Step 1: Login to get session cookie
-    const { status: loginStatus, cookie } = await finaleLogin(account, username, password)
+  const cleanAccount = normalizeAccount(account)
+  // sc2 is a UI route — strip it for API calls, keep only the first segment
+  const apiAccount = cleanAccount.split('/')[0]
+  const base64 = Buffer.from(`${username}:${password}`).toString('base64')
 
-    if (loginStatus === 404) {
-      return NextResponse.json({ ok: false, msg: `Account "${account}" not found — check your account name (the subdomain on app.finaleinventory.com).` })
-    }
-    if (!cookie && loginStatus !== 200 && loginStatus !== 302) {
-      return NextResponse.json({ ok: false, msg: `Login failed — Finale returned ${loginStatus}. Check your username and password.` })
-    }
+  // Try both account paths: with and without the sub-path
+  const candidates = Array.from(new Set([apiAccount, cleanAccount]))
 
-    // Step 2: Use session cookie to fetch a product (validates credentials work)
-    const productUrl = `https://app.finaleinventory.com/${account}/api/product?limit=1`
-    const res = await fetch(productUrl, {
-      headers: {
-        Cookie: cookie || '',
-        Accept: 'application/json',
-      },
-      signal: AbortSignal.timeout(10_000),
-    })
+  for (const acct of candidates) {
+    const url = `https://app.finaleinventory.com/${acct}/api/product?limit=1`
+    try {
+      const res = await fetch(url, {
+        headers: {
+          'Authorization': `Basic ${base64}`,
+          'Accept': 'application/json',
+        },
+        signal: AbortSignal.timeout(10_000),
+      })
 
-    if (res.status === 401 || res.status === 403) {
-      return NextResponse.json({ ok: false, msg: 'Login succeeded but API access was denied. Check your Finale account permissions.' })
-    }
-    if (!res.ok) {
-      const body = await res.text().catch(() => '')
-      return NextResponse.json({ ok: false, msg: `Finale returned ${res.status}: ${body.slice(0, 200)}` })
-    }
+      const body = await res.text()
 
-    const data = await res.json()
-    const count = Array.isArray(data) ? data.length : (data?.results?.length ?? '?')
-    return NextResponse.json({ ok: true, msg: `Connected! Finale account "${account}" is working. (${count} product(s) fetched)` })
-  } catch (err) {
-    const msg = (err as Error).message
-    if (msg.includes('timeout') || msg.includes('abort')) {
-      return NextResponse.json({ ok: false, msg: 'Connection timed out. Check your network or Finale may be down.' })
-    }
-    return NextResponse.json({ ok: false, msg: `Connection error: ${msg}` })
+      if (res.status === 401) {
+        return NextResponse.json({ ok: false, msg: `Invalid credentials (401) — double-check your Finale email and password. Account tried: ${acct}` })
+      }
+      if (res.status === 403) {
+        continue // try next candidate
+      }
+      if (res.status === 404) {
+        continue // try next candidate
+      }
+      if (!res.ok) {
+        return NextResponse.json({ ok: false, msg: `Finale returned HTTP ${res.status} at "${acct}": ${body.slice(0, 200)}` })
+      }
+
+      let data
+      try { data = JSON.parse(body) } catch { data = null }
+      const count = Array.isArray(data) ? data.length : (data?.results?.length ?? '?')
+
+      // Save the working account path back to env
+      process.env.FINALE_ACCOUNT = acct
+
+      return NextResponse.json({ ok: true, msg: `Connected! Finale account "${acct}" is working. (${count} product(s) fetched)` })
+
+    } catch { continue }
   }
+
+  return NextResponse.json({ ok: false, msg: `Could not connect to Finale. Tried: ${candidates.join(', ')}.\n\nPossible causes:\n• Wrong email or password\n• API access not enabled for your user (check Finale → Admin → Users)\n• Your Finale plan may not include API access` })
 }

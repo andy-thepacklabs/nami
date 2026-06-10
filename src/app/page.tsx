@@ -18,6 +18,7 @@ import SheetsPanel from '@/components/SheetsPanel'
 import SettingsPanel from '@/components/SettingsPanel'
 import CycleCountPanel from '@/components/CycleCountPanel'
 import ReconcileTab from '@/components/ReconcileTab'
+import FinaleReportPanel from '@/components/FinaleReportPanel'
 
 interface HotBin { bin: string; count: number; critical_count: number }
 
@@ -38,7 +39,7 @@ interface ListData {
 const REFRESH_INTERVAL = 30_000
 
 export default function Dashboard() {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'reconcile' | 'cyclecount'>('dashboard')
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'reconcile' | 'cyclecount' | 'finalereport'>('dashboard')
   const [statsData, setStatsData] = useState<StatsData | null>(null)
   const [listData, setListData] = useState<ListData | null>(null)
   const [loading, setLoading] = useState(true)
@@ -128,6 +129,14 @@ export default function Dashboard() {
           >
             <BarChart2 className="w-3.5 h-3.5 inline mr-1.5 -mt-0.5" />Dashboard
           </button>
+          <button
+            onClick={() => setActiveTab('finalereport')}
+            className={cn('px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wide transition-colors',
+              activeTab === 'finalereport' ? 'bg-orange-500/15 text-orange-400' : 'text-orange-800 hover:text-orange-400'
+            )}
+          >
+            <FileSpreadsheet className="w-3.5 h-3.5 inline mr-1.5 -mt-0.5" />Finale Report
+          </button>
         </div>
 
         <div className="flex-1" />
@@ -154,6 +163,10 @@ export default function Dashboard() {
         <ReconcileTab />
       ) : activeTab === 'cyclecount' ? (
         <CycleCountPanel onClose={() => setActiveTab('dashboard')} inline />
+      ) : activeTab === 'finalereport' ? (
+        <div className="flex-1 flex flex-col overflow-hidden">
+          <FinaleReportPanel onClose={() => setActiveTab('dashboard')} />
+        </div>
       ) : (
       <div className="flex-1 overflow-auto p-6 flex items-center justify-center">
         {/* Dashboard content removed — ready for redesign */}
