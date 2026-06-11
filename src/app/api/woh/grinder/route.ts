@@ -21,6 +21,9 @@ export async function GET() {
       FROM finale_stock_csv s
       LEFT JOIN finale_consumed_90d c ON c.product_id = s.product_id
       WHERE s.product_id LIKE 'FMX-%'
+         OR s.product_id = 'ISO - THCA'
+         OR s.product_id = 'Flower - CBD Flower'
+         OR s.product_id = 'Flower - Raw THCA Smalls'
       GROUP BY s.product_id
       ORDER BY s.product_id
     `).all() as { product_id: string; product_name: string | null; qoh: number; available: number; consumed_90d: number | null }[]
