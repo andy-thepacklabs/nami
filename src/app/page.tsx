@@ -44,12 +44,14 @@ type SleeveRow = WohRow
 
 export default function Dashboard() {
   const [activeTab, setActiveTab] = useState<'home' | 'dashboard' | 'reconcile' | 'cyclecount' | 'finalereport'>('home')
-  const [wohTab, setWohTab] = useState<'sleeve' | 'display' | 'mylar' | 'tube' | 'cone' | 'label' | 'grinder' | null>(null)
+  const [wohTab, setWohTab] = useState<'sleeve' | 'display' | 'mylar' | 'tube' | 'cone' | 'label' | 'grinder' | 'lab' | null>(null)
   const [labelRows, setLabelRows] = useState<WohRow[]>([])
   const [labelLoading, setLabelLoading] = useState(false)
   const [labelSearch, setLabelSearch] = useState('')
   const [grinderRows, setGrinderRows] = useState<WohRow[]>([])
   const [grinderLoading, setGrinderLoading] = useState(false)
+  const [labRows, setLabRows] = useState<WohRow[]>([])
+  const [labLoading, setLabLoading] = useState(false)
   const [sleeveRows, setSleeveRows] = useState<WohRow[]>([])
   const [sleeveLoading, setSleeveLoading] = useState(false)
   const [displayRows, setDisplayRows] = useState<WohRow[]>([])
@@ -338,6 +340,22 @@ export default function Dashboard() {
                 >
                   <ChevronRight className="w-3 h-3 shrink-0" />
                   <span className="text-[11px] font-bold uppercase tracking-wider">Grinder</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setWohTab('lab')
+                    if (labRows.length === 0) {
+                      setLabLoading(true)
+                      fetch('/api/woh/lab').then(r => r.json()).then(d => { setLabRows(d.rows || []); setLabLoading(false) })
+                    }
+                  }}
+                  className={cn(
+                    'w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left transition-colors',
+                    wohTab === 'lab' ? 'bg-orange-500/15 text-orange-400' : 'text-orange-700 hover:bg-orange-500/10 hover:text-orange-400'
+                  )}
+                >
+                  <ChevronRight className="w-3 h-3 shrink-0" />
+                  <span className="text-[11px] font-bold uppercase tracking-wider">Lab</span>
                 </button>
               </div>
             </div>
@@ -781,6 +799,65 @@ export default function Dashboard() {
                                 <td className="px-4 py-2.5">
                                   <div className="font-mono font-semibold text-orange-300">{row.product_id}</div>
                                   {row.product_name && <div className="text-[10px] text-orange-800 truncate max-w-[200px]">{row.product_name}</div>}
+                                </td>
+                                <td className="px-4 py-2.5 text-right font-mono tabular-nums text-white font-bold">{row.qoh.toLocaleString()}</td>
+                                <td className="px-4 py-2.5 text-right font-mono tabular-nums text-emerald-400">{row.available.toLocaleString()}</td>
+                                <td className="px-4 py-2.5 text-right font-mono tabular-nums text-amber-400">
+                                  {row.consumed_90d != null ? Math.round(row.consumed_90d).toLocaleString() : '—'}
+                                </td>
+                                <td className="px-4 py-2.5 text-right font-mono tabular-nums text-orange-300">
+                                  {monthlyRequired != null ? Math.round(monthlyRequired).toLocaleString() : '—'}
+                                </td>
+                                <td className="px-4 py-2.5 text-right font-mono tabular-nums text-sky-400">
+                                  {wohQoh != null ? wohQoh.toFixed(1) : '—'}
+                                </td>
+                                <td className="px-4 py-2.5 text-right font-mono tabular-nums text-sky-300">
+                                  {wohAvailable != null ? wohAvailable.toFixed(1) : '—'}
+                                </td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+                </>
+              ) : wohTab === 'lab' ? (
+                <>
+                  <div className="px-6 py-3 border-b border-orange-900/30 flex items-center gap-3">
+                    <span className="text-xs font-bold uppercase tracking-widest text-orange-500">Lab</span>
+                    {!labLoading && <span className="text-[10px] text-orange-800">{labRows.length} SKUs</span>}
+                  </div>
+                  <div className="flex-1 overflow-auto">
+                    {labLoading ? (
+                      <div className="flex items-center justify-center h-32 gap-2 text-orange-800 text-xs">
+                        <RefreshCw className="w-4 h-4 animate-spin" /> Loading...
+                      </div>
+                    ) : labRows.length === 0 ? (
+                      <div className="flex items-center justify-center h-32 text-xs text-orange-900">No lab data — upload a Finale stock CSV first.</div>
+                    ) : (
+                      <table className="w-full text-xs">
+                        <thead className="sticky top-0 bg-[#0d0a07] border-b border-orange-900/30">
+                          <tr>
+                            <th className="text-left px-4 py-3 text-[10px] font-bold uppercase tracking-[0.15em] text-orange-700">Product ID</th>
+                            <th className="text-right px-4 py-3 text-[10px] font-bold uppercase tracking-[0.15em] text-orange-700">Stock QoH</th>
+                            <th className="text-right px-4 py-3 text-[10px] font-bold uppercase tracking-[0.15em] text-orange-700">Stock Available</th>
+                            <th className="text-right px-4 py-3 text-[10px] font-bold uppercase tracking-[0.15em] text-orange-700">Consumed 90d</th>
+                            <th className="text-right px-4 py-3 text-[10px] font-bold uppercase tracking-[0.15em] text-orange-700">Monthly Required</th>
+                            <th className="text-right px-4 py-3 text-[10px] font-bold uppercase tracking-[0.15em] text-orange-700">Wk On Hand (QoH)</th>
+                            <th className="text-right px-4 py-3 text-[10px] font-bold uppercase tracking-[0.15em] text-orange-700">Wk On Hand (Avail)</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-orange-900/20">
+                          {(wohSearch ? labRows.filter(r => r.product_id.toLowerCase().includes(wohSearch.toLowerCase()) || (r.product_name || '').toLowerCase().includes(wohSearch.toLowerCase())) : labRows).map(row => {
+                            const monthlyRequired = row.consumed_90d != null && row.consumed_90d > 0 ? row.consumed_90d / 3 : null
+                            const wohQoh = monthlyRequired != null && row.qoh > 0 ? (row.qoh / monthlyRequired) * 4.33 : null
+                            const wohAvailable = monthlyRequired != null && row.available > 0 ? (row.available / monthlyRequired) * 4.33 : null
+                            return (
+                              <tr key={row.product_id} className="hover:bg-orange-500/5 transition-colors">
+                                <td className="px-4 py-2.5 text-orange-200">
+                                  <div className="font-mono">{row.product_id}</div>
+                                  {row.product_name && <div className="text-orange-800 text-[10px]">{row.product_name}</div>}
                                 </td>
                                 <td className="px-4 py-2.5 text-right font-mono tabular-nums text-white font-bold">{row.qoh.toLocaleString()}</td>
                                 <td className="px-4 py-2.5 text-right font-mono tabular-nums text-emerald-400">{row.available.toLocaleString()}</td>
