@@ -15,7 +15,7 @@ interface ComparisonLine {
   physicalCount: number
   variance: number
   variancePct: number
-  status: 'match' | 'variance' | 'not_in_finale' | 'not_counted'
+  status: 'match' | 'variance' | 'not_in_finale' | 'not_counted' | 'bin_not_in_finale'
 }
 
 interface ComparisonResult {
@@ -450,13 +450,13 @@ type FilterKey = 'all' | 'variance' | 'not_counted' | 'match'
 function getReportRows(comparison: ComparisonResult, filter: FilterKey) {
   const { lines, summary } = comparison
   const filtered = lines.filter(l => {
-    if (filter === 'variance') return l.status === 'variance'
+    if (filter === 'variance') return l.status === 'variance' || l.status === 'not_in_finale' || l.status === 'bin_not_in_finale'
     if (filter === 'not_counted') return l.status === 'not_counted'
     if (filter === 'match') return l.status === 'match'
     return true
   })
   const statusLabel = (s: string) =>
-    s === 'match' ? 'Match' : s === 'variance' ? 'Variance' : s === 'not_counted' ? 'Not Counted' : 'Not in Finale'
+    s === 'match' ? 'Match' : s === 'variance' ? 'Variance' : s === 'not_counted' ? 'Not Counted' : s === 'bin_not_in_finale' ? 'Bin Not in Finale' : 'Not in Finale'
   return { filtered, summary, statusLabel }
 }
 
@@ -672,7 +672,7 @@ function ResultsView({ comparison, filter, setFilter }: {
   const { lines, summary } = comparison
 
   const filtered = lines.filter(l => {
-    if (filter === 'variance') return l.status === 'variance'
+    if (filter === 'variance') return l.status === 'variance' || l.status === 'not_in_finale' || l.status === 'bin_not_in_finale'
     if (filter === 'not_counted') return l.status === 'not_counted'
     if (filter === 'match') return l.status === 'match'
     return true
@@ -741,6 +741,7 @@ function ResultsView({ comparison, filter, setFilter }: {
                   {l.status === 'variance' && <AlertTriangle className="w-4 h-4 text-red-400" />}
                   {l.status === 'not_counted' && <XCircle className="w-4 h-4 text-amber-400" />}
                   {l.status === 'not_in_finale' && <Minus className="w-4 h-4 text-orange-700" />}
+                  {l.status === 'bin_not_in_finale' && <AlertCircle className="w-4 h-4 text-purple-400" />}
                 </td>
                 <td className="px-4 py-2.5">
                   <div className="font-mono text-xs text-orange-100 font-medium">{l.productId}</div>

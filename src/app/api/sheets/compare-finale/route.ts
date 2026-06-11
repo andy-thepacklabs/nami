@@ -115,8 +115,11 @@ export async function POST(req: NextRequest) {
     if (ex) { ex.count += count } else { physicalMap.set(key, { count, bin }) }
   }
 
-  // Compare: try bin-level first, fall back to product total
-  type Status = 'match' | 'variance' | 'not_in_finale' | 'not_counted'
+  // Determine if Finale CSV has any bin-level data
+  const finaleHasBins = finaleByBin.size > 0
+
+  // Compare bin-for-bin — no fallback to product total when bin is specified
+  type Status = 'match' | 'variance' | 'not_in_finale' | 'not_counted' | 'bin_not_in_finale'
   interface Line {
     productId: string; productName: string; binLocation: string
     finaleQty: number; physicalCount: number; variance: number; variancePct: number; status: Status
@@ -126,8 +129,22 @@ export async function POST(req: NextRequest) {
   for (const [key, { count: physCount, bin }] of physicalMap) {
     const pid = key.split('::')[0]
 
-    // Bin-level match first, then product-level fallback
-    const finale = (bin ? finaleByBin.get(`${pid}::${bin}`) : undefined) ?? finaleByPid.get(pid)
+    // If bin specified and Finale has bin data → match exact bin only, no total fallback
+    // If bin specified but Finale has NO bin data at all → fall back to product total (old CSV without sublocations)
+    // If no bin specified → use product total
+    let finale: { qoh: number; name: string } | undefined
+    if (bin && finaleHasBins) {
+      finale = finaleByBin.get(`${pid}::${bin}`)
+    } else {
+      finale = (bin ? finaleByBin.get(`${pid}::${bin}`) : undefined) ?? finaleByPid.get(pid)
+    }
+
+    // If bin was specified, Finale has bin data, but this exact bin isn't in Finale → flag it
+    if (bin && finaleHasBins && !finale) {
+      const productName = finaleByPid.get(pid)?.name || pid
+      lines.push({ productId: pid, productName, binLocation: bin, finaleQty: 0, physicalCount: physCount, variance: physCount, variancePct: 100, status: 'bin_not_in_finale' })
+      continue
+    }
 
     const finaleQty = finale ? Math.round(finale.qoh) : 0
     const productName = finale?.name || pid
@@ -143,7 +160,7 @@ export async function POST(req: NextRequest) {
     lines.push({ productId: pid, productName, binLocation: bin, finaleQty, physicalCount: physCount, variance, variancePct, status })
   }
 
-  const order = { variance: 0, not_in_finale: 1, match: 2, not_counted: 3 }
+  const order = { variance: 0, bin_not_in_finale: 1, not_in_finale: 2, match: 3, not_counted: 4 }
   lines.sort((a, b) => order[a.status] - order[b.status] || Math.abs(b.variance) - Math.abs(a.variance))
 
   const matched         = lines.filter(l => l.status === 'match').length
