@@ -20,7 +20,7 @@ export async function GET() {
              c.quantity as consumed_90d
       FROM finale_stock_csv s
       LEFT JOIN finale_consumed_90d c ON c.product_id = s.product_id
-      WHERE s.product_id LIKE 'GRD%'
+      WHERE s.product_id LIKE 'FMX-%'
       GROUP BY s.product_id
       ORDER BY s.product_id
     `).all() as { product_id: string; product_name: string | null; qoh: number; available: number; consumed_90d: number | null }[]
