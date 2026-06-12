@@ -324,6 +324,7 @@ async function doSync(): Promise<ReturnType<typeof NextResponse.json>> {
         if (!pid) continue
         if (hasSublocs && p.stockSublocationSummary) {
           const bins = parseSublocationSummary(p.stockSublocationSummary)
+            .filter(b => b.bin.startsWith('SFS-'))
           if (bins.length > 0) {
             for (const { bin, qty } of bins) { ins.run(pid, bin, name, cat, qty, available); imported++ }
             continue
