@@ -42,6 +42,22 @@ export default function FinaleReportPanel({ onClose: _ }: { onClose: () => void 
   const [uploadingStock, setUploadingStock] = useState(false)
   const [uploadError, setUploadError] = useState('')
   const [syncing, setSyncing] = useState(false)
+  const [locationCount, setLocationCount] = useState<number | null>(null)
+  const [uploadingLocations, setUploadingLocations] = useState(false)
+
+  useEffect(() => {
+    fetch('/api/finale/import-locations').then(r => r.json()).then(d => setLocationCount(d.count ?? 0))
+  }, [])
+
+  const uploadLocations = async (file: File) => {
+    setUploadingLocations(true)
+    const fd = new FormData()
+    fd.append('file', file)
+    const res = await fetch('/api/finale/import-locations', { method: 'POST', body: fd })
+    const data = await res.json()
+    if (data.ok) setLocationCount(data.imported)
+    setUploadingLocations(false)
+  }
   const [syncResult, setSyncResult] = useState<{ ok?: boolean; source?: string; imported?: number; products?: number; skipped?: number; note?: string; error?: string; bins?: number; salesSynced?: number } | null>(null)
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -138,6 +154,12 @@ export default function FinaleReportPanel({ onClose: _ }: { onClose: () => void 
             {uploadingStock ? 'Importing...' : 'CSV'}
             <input type="file" accept=".csv" className="hidden"
               onChange={e => { const f = e.target.files?.[0]; if (f) uploadCsv(f) }} />
+          </label>
+          <label className="btn-ghost text-xs h-8 px-3 cursor-pointer flex items-center gap-1.5" title="Upload active bin locations CSV to filter sync">
+            <Upload className="w-3.5 h-3.5 text-sky-400" />
+            <span className="text-sky-400">{uploadingLocations ? 'Uploading...' : locationCount ? `Bins (${locationCount})` : 'Active Bins'}</span>
+            <input type="file" accept=".csv" className="hidden"
+              onChange={e => { const f = e.target.files?.[0]; if (f) uploadLocations(f); if (e.target) e.target.value = '' }} />
           </label>
         </div>
       </div>
