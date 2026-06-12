@@ -35,11 +35,12 @@ export async function POST(req: NextRequest) {
     const cols = line.split(',').map(c => c.replace(/"/g, '').trim())
     const name = cols[nameCol]?.trim()
     if (!name) continue
-    // If status column exists, only keep active ones
+    // Only keep active SFS- bins
     if (statusCol !== -1) {
       const status = (cols[statusCol] || '').trim().toLowerCase()
-      if (status.includes('inactive') || status === 'false' || status === '0') continue
+      if (status !== 'active') continue
     }
+    if (!name.startsWith('SFS-')) continue
     activeBins.push(name)
   }
 
