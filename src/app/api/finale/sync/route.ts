@@ -117,7 +117,6 @@ interface GqlProductNode {
   salesLast30Days: number | null
   salesLast60Days: number | null
   salesLast90Days: number | null
-  salesLast180Days: number | null
   salesLastMonth: number | null
   salesThisMonth: number | null
 }
@@ -214,7 +213,6 @@ async function doSync(): Promise<ReturnType<typeof NextResponse.json>> {
       sales_30d         REAL,
       sales_60d         REAL,
       sales_90d         REAL,
-      sales_180d        REAL,
       sales_last_month  REAL,
       sales_this_month  REAL,
       qty_on_hand       REAL,
@@ -227,6 +225,7 @@ async function doSync(): Promise<ReturnType<typeof NextResponse.json>> {
   try { db.exec(`ALTER TABLE finale_stock_csv ADD COLUMN category TEXT`) } catch { /* already exists */ }
   try { db.exec(`ALTER TABLE finale_stock_csv ADD COLUMN available REAL`) } catch { /* already exists */ }
   try { db.exec(`ALTER TABLE finale_sales_csv ADD COLUMN sales_60d REAL`) } catch { /* already exists */ }
+  try { db.exec(`ALTER TABLE finale_sales_csv DROP COLUMN sales_180d`) } catch { /* already removed */ }
 
   // --- Try GraphQL path first ---
   try {
@@ -258,7 +257,6 @@ async function doSync(): Promise<ReturnType<typeof NextResponse.json>> {
               salesLast30Days
               salesLast60Days
               salesLast90Days
-              salesLast180Days
               salesLastMonth
               salesThisMonth
             }
@@ -371,9 +369,9 @@ async function doSync(): Promise<ReturnType<typeof NextResponse.json>> {
       const insSales = db.prepare(`
         INSERT OR REPLACE INTO finale_sales_csv
           (product_id, product_name, category, sales_7d, sales_30d, sales_60d, sales_90d,
-           sales_180d, sales_last_month, sales_this_month, qty_on_hand, qty_available,
+           sales_last_month, sales_this_month, qty_on_hand, qty_available,
            average_cost, upc, imported_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
       `)
       db.prepare('DELETE FROM finale_sales_csv').run()
       db.exec('BEGIN')
@@ -389,7 +387,6 @@ async function doSync(): Promise<ReturnType<typeof NextResponse.json>> {
             p.salesLast30Days ?? null,
             p.salesLast60Days ?? null,
             p.salesLast90Days ?? null,
-            p.salesLast180Days ?? null,
             p.salesLastMonth ?? null,
             p.salesThisMonth ?? null,
             parseFloat(String(p.unitsInStock ?? '0')) || null,
