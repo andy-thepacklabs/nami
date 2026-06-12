@@ -77,21 +77,20 @@ export async function GET(req: Request) {
   if (!account) return NextResponse.json({ error: 'No credentials' }, { status: 400 })
 
   const url = new URL(req.url)
-  // ?inspect=sublocation — return raw sublocation API response (first 5 rows + all field keys)
+  // ?inspect=sublocation — find sublocation types in GraphQL schema
   if (url.searchParams.get('inspect') === 'sublocation') {
     try {
-      const endpoint = url.searchParams.get('endpoint') || 'location'
-      const res = await finaleGet(endpoint)
-      const data = res.data
-      if (Array.isArray(data)) {
-        return NextResponse.json({ status: res.status, format: 'array', count: data.length, sample: data.slice(0, 3) })
-      } else if (data && typeof data === 'object') {
-        const keys = Object.keys(data as object)
-        const sample: Record<string, unknown> = {}
-        for (const k of keys) sample[k] = ((data as Record<string, unknown[]>)[k] || []).slice(0, 3)
-        return NextResponse.json({ status: res.status, format: 'object', keys, sample })
+      // Search schema for sublocation/location related types
+      const schemaRes = await finaleGraphQL(`{ __schema { types { name } } }`) as { data?: { __schema?: { types: Array<{ name: string }> } } }
+      const allTypes = schemaRes.data?.__schema?.types?.map(t => t.name).filter(n => !n.startsWith('__')) ?? []
+      const locationTypes = allTypes.filter(n => /subloc|location|bin|rack|shelf/i.test(n))
+      // Also try introspecting known sublocation type names
+      const results: Record<string, unknown> = { allLocationTypes: locationTypes }
+      for (const t of ['sublocation', 'Sublocation', 'sublocationViewConnection', 'location', 'Location']) {
+        const r = await finaleGraphQL(`{ __type(name: "${t}") { fields { name } } }`) as { data?: { __type?: { fields: Array<{ name: string }> } | null } }
+        if (r.data?.__type) results[t] = r.data.__type.fields?.map(f => f.name)
       }
-      return NextResponse.json({ status: res.status, format: 'unknown', data })
+      return NextResponse.json(results)
     } catch (err) {
       return NextResponse.json({ error: String(err) }, { status: 500 })
     }
