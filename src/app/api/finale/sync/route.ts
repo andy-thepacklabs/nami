@@ -80,7 +80,8 @@ export async function GET(req: Request) {
   // ?inspect=sublocation — return raw sublocation API response (first 5 rows + all field keys)
   if (url.searchParams.get('inspect') === 'sublocation') {
     try {
-      const res = await finaleGet('sublocation')
+      const endpoint = url.searchParams.get('endpoint') || 'location'
+      const res = await finaleGet(endpoint)
       const data = res.data
       if (Array.isArray(data)) {
         return NextResponse.json({ status: res.status, format: 'array', count: data.length, sample: data.slice(0, 3) })
