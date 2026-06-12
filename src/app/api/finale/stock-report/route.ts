@@ -52,7 +52,10 @@ export async function GET(req: NextRequest) {
       s.product_id, s.product_name, s.category, s.bin_location, s.qoh,
       MAX(s.available) OVER (PARTITION BY s.product_id) AS available,
       CAST(NULLIF(c.quantity, '') AS REAL) AS consumed_90d,
-      sv.sales_7d, sv.sales_30d, sv.sales_60d, sv.sales_90d,
+      CAST(NULLIF(sv.sales_7d,'') AS REAL) AS sales_7d,
+      CAST(NULLIF(sv.sales_30d,'') AS REAL) AS sales_30d,
+      CAST(NULLIF(sv.sales_60d,'') AS REAL) AS sales_60d,
+      CAST(NULLIF(sv.sales_90d,'') AS REAL) AS sales_90d,
       sv.sales_this_month, sv.sales_last_month`
 
     const joins = `
