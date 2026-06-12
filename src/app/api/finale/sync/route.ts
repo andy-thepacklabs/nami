@@ -226,6 +226,10 @@ async function doSync(): Promise<ReturnType<typeof NextResponse.json>> {
   try { db.exec(`ALTER TABLE finale_stock_csv ADD COLUMN available REAL`) } catch { /* already exists */ }
   try { db.exec(`ALTER TABLE finale_sales_csv ADD COLUMN sales_60d REAL`) } catch { /* already exists */ }
   try { db.exec(`ALTER TABLE finale_sales_csv DROP COLUMN sales_180d`) } catch { /* already removed */ }
+  try { db.exec(`ALTER TABLE finale_sales_csv ADD COLUMN qty_on_hand REAL`) } catch { /* already exists */ }
+  try { db.exec(`ALTER TABLE finale_sales_csv ADD COLUMN qty_available REAL`) } catch { /* already exists */ }
+  try { db.exec(`ALTER TABLE finale_sales_csv ADD COLUMN average_cost REAL`) } catch { /* already exists */ }
+  try { db.exec(`ALTER TABLE finale_sales_csv ADD COLUMN upc TEXT`) } catch { /* already exists */ }
 
   // --- Try GraphQL path first ---
   // ── Phase 1: stock query (critical — if this fails we fall back to REST) ──
