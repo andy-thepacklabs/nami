@@ -22,8 +22,10 @@ export async function POST(req: NextRequest) {
   // Parse headers
   const headers = lines[0].split(',').map(h => h.replace(/"/g, '').trim().toLowerCase())
 
-  // Find the bin/sublocation name column
-  const nameCol = headers.findIndex(h => /sublocation|bin|location|name/i.test(h))
+  // Find the bin/sublocation name column — prefer 'sublocation' over generic 'location'
+  let nameCol = headers.findIndex(h => /sublocation/i.test(h))
+  if (nameCol === -1) nameCol = headers.findIndex(h => /^bin$|bin location/i.test(h))
+  if (nameCol === -1) nameCol = headers.findIndex(h => /location|name/i.test(h))
   const statusCol = headers.findIndex(h => /status/i.test(h))
 
   if (nameCol === -1) return NextResponse.json({ error: `Could not find a name column. Found: [${headers.join(', ')}]` }, { status: 400 })
