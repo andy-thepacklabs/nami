@@ -1,9 +1,9 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import {
   X, RefreshCw, CheckCircle2, AlertCircle, Database,
-  Package, MapPin, Truck, Archive, Search, ChevronDown, ChevronRight
+  Package, MapPin, Truck, Archive, Search, Upload
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -51,6 +51,25 @@ export default function FinalePanel({ onClose, onSync }: { onClose: () => void; 
   const [connectionError, setConnectionError] = useState('')
   const [testing, setTesting] = useState(false)
   const [tab, setTab] = useState<TabKey>('overview')
+  const [locationCount, setLocationCount] = useState<number | null>(null)
+  const [locationUploading, setLocationUploading] = useState(false)
+  const locationInputRef = useRef<HTMLInputElement>(null)
+
+  const loadLocationCount = async () => {
+    const res = await fetch('/api/finale/import-locations')
+    const data = await res.json()
+    setLocationCount(data.count ?? 0)
+  }
+
+  const uploadLocations = async (file: File) => {
+    setLocationUploading(true)
+    const fd = new FormData()
+    fd.append('file', file)
+    const res = await fetch('/api/finale/import-locations', { method: 'POST', body: fd })
+    const data = await res.json()
+    if (data.ok) setLocationCount(data.imported)
+    setLocationUploading(false)
+  }
 
   const loadStats = async () => {
     const res = await fetch('/api/finale/sync')
@@ -91,7 +110,7 @@ export default function FinalePanel({ onClose, onSync }: { onClose: () => void; 
     setSyncing(false)
   }
 
-  useEffect(() => { loadStats() }, [])
+  useEffect(() => { loadStats(); loadLocationCount() }, [])
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
@@ -119,11 +138,19 @@ export default function FinalePanel({ onClose, onSync }: { onClose: () => void; 
             {syncing ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
             {syncing ? 'Syncing...' : 'Full Sync'}
           </button>
-          {stats?.lastSync?.completed_at && (
-            <span className="text-xs text-orange-700 ml-auto">
-              Last sync: {new Date(stats.lastSync.completed_at).toLocaleString()}
-            </span>
-          )}
+          <div className="ml-auto flex items-center gap-3">
+            <input ref={locationInputRef} type="file" accept=".csv" className="hidden"
+              onChange={e => { const f = e.target.files?.[0]; if (f) uploadLocations(f); e.target.value = '' }} />
+            <button onClick={() => locationInputRef.current?.click()} disabled={locationUploading} className="btn-ghost text-xs">
+              {locationUploading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+              {locationCount ? `Active Bins (${locationCount})` : 'Upload Active Bins'}
+            </button>
+            {stats?.lastSync?.completed_at && (
+              <span className="text-xs text-orange-700">
+                Last sync: {new Date(stats.lastSync.completed_at).toLocaleString()}
+              </span>
+            )}
+          </div>
         </div>
 
         {/* Connection error */}

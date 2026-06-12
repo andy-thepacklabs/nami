@@ -164,25 +164,15 @@ export async function POST() {
   }
 }
 
-async function fetchActiveSublocations(): Promise<Set<string>> {
-  const active = new Set<string>()
+function loadActiveLocationsFromDb(): Set<string> {
+  const db = getDb()
   try {
-    const res = await finaleGet('sublocation')
-    if (res.status !== 200) return active
-    const data = res.data as Record<string, unknown[]>
-    const names    = (data.sublocationId  || data.name || []) as string[]
-    const statuses = (data.statusId       || data.status || []) as string[]
-    for (let i = 0; i < names.length; i++) {
-      const name   = (names[i] || '').trim()
-      const status = (statuses[i] || '').toUpperCase()
-      if (name.startsWith('SFS-') && !status.includes('INACTIVE')) {
-        active.add(name)
-      }
-    }
-  } catch (err) {
-    console.warn('[sync] fetchActiveSublocations failed:', err)
+    db.exec(`CREATE TABLE IF NOT EXISTS active_locations (bin_location TEXT PRIMARY KEY, imported_at TEXT NOT NULL DEFAULT (datetime('now')))`)
+    const rows = db.prepare(`SELECT bin_location FROM active_locations`).all() as { bin_location: string }[]
+    return new Set(rows.map(r => r.bin_location))
+  } catch {
+    return new Set()
   }
-  return active
 }
 
 async function fetchConsumed90d(): Promise<Map<string, number>> {
@@ -348,8 +338,8 @@ async function doSync(): Promise<ReturnType<typeof NextResponse.json>> {
 
     const hasSublocs = activeProducts.some(p => p.stockSublocationSummary && p.stockSublocationSummary.trim() !== '')
 
-    // Fetch active SFS- sublocations to use as whitelist (1 REST call)
-    const activeBins = await fetchActiveSublocations()
+    // Load active bin whitelist from DB (uploaded via CSV import)
+    const activeBins = loadActiveLocationsFromDb()
     const filterBin = (bin: string) => activeBins.size > 0 ? activeBins.has(bin) : bin.startsWith('SFS-')
 
     db.prepare('DELETE FROM finale_stock_csv').run()
