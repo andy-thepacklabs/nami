@@ -226,6 +226,7 @@ async function doSync(): Promise<ReturnType<typeof NextResponse.json>> {
   `)
   try { db.exec(`ALTER TABLE finale_stock_csv ADD COLUMN category TEXT`) } catch { /* already exists */ }
   try { db.exec(`ALTER TABLE finale_stock_csv ADD COLUMN available REAL`) } catch { /* already exists */ }
+  try { db.exec(`ALTER TABLE finale_sales_csv ADD COLUMN sales_60d REAL`) } catch { /* already exists */ }
 
   // --- Try GraphQL path first ---
   try {
