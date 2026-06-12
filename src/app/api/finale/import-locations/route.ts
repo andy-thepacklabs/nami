@@ -43,7 +43,11 @@ export async function POST(req: NextRequest) {
     activeBins.push(name)
   }
 
-  if (activeBins.length === 0) return NextResponse.json({ error: 'No active bin locations found in CSV' }, { status: 400 })
+  // Debug: return sample so we can verify parsing
+  const debugSample = { headers, nameCol, statusCol, firstFewActive: activeBins.slice(0, 5), total: activeBins.length }
+  console.log('[import-locations]', JSON.stringify(debugSample))
+
+  if (activeBins.length === 0) return NextResponse.json({ error: 'No active bin locations found in CSV', headers, nameCol, statusCol }, { status: 400 })
 
   const db = getDb()
   db.exec(`CREATE TABLE IF NOT EXISTS active_locations (bin_location TEXT PRIMARY KEY, imported_at TEXT NOT NULL DEFAULT (datetime('now')))`)
@@ -58,5 +62,5 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: `Insert failed: ${e}` }, { status: 500 })
   }
 
-  return NextResponse.json({ ok: true, imported: activeBins.length })
+  return NextResponse.json({ ok: true, imported: activeBins.length, debug: { headers, nameCol, statusCol, sample: activeBins.slice(0, 5) } })
 }
