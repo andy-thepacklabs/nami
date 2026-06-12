@@ -232,40 +232,70 @@ async function doSync(): Promise<ReturnType<typeof NextResponse.json>> {
   try { db.exec(`ALTER TABLE finale_sales_csv ADD COLUMN upc TEXT`) } catch { /* already exists */ }
 
   // --- Try GraphQL path first ---
-  // ── Phase 1: stock query (critical — if this fails we fall back to REST) ──
-  type StockNode = { productId: string; description: string; category: string; status: string; unitsInStock: string | number | null; stockAvailableToPromiseUnits: string | number | null; stockSublocationSummary: string | null }
-  let allStockProducts: StockNode[] = []
-  try {
+  // Active-only filter reduces pages fetched (skips ~1014 inactive products)
+  // Strategy: try combined stock+sales in one pass; if sales fields unsupported, retry stock-only
+  type FullNode = {
+    productId: string; description: string; category: string; status: string
+    unitsInStock: string | number | null; stockAvailableToPromiseUnits: string | number | null
+    stockSublocationSummary: string | null; universalProductCode: string | null
+    averageCost: number | null; salesLast7Days: number | null; salesLast30Days: number | null
+    salesLast60Days: number | null; salesLast90Days: number | null
+    salesLastMonth: number | null; salesThisMonth: number | null
+  }
+
+  async function fetchAllPages(fields: string, statusFilter: string): Promise<FullNode[]> {
+    const nodes: FullNode[] = []
     let hasNextPage = true
     let cursor: string | null = null
-    const PAGE = 500
     while (hasNextPage) {
       if (cursor) await new Promise(r => setTimeout(r, 600))
-      const afterArg = cursor ? `, after: "${cursor}"` : ''
-      const query = `{
-        productViewConnection(first: ${PAGE}${afterArg}) {
-          pageInfo { hasNextPage endCursor }
-          edges { node { productId description category status unitsInStock stockAvailableToPromiseUnits stockSublocationSummary } }
-        }
-      }`
-      const result = await finaleGraphQL(query) as { data?: { productViewConnection?: { pageInfo: { hasNextPage: boolean; endCursor: string }; edges: Array<{ node: StockNode }> } }; errors?: Array<{ message: string }> }
+      const args = [`first: 500`, statusFilter, cursor ? `after: "${cursor}"` : ''].filter(Boolean).join(', ')
+      const query = `{ productViewConnection(${args}) { pageInfo { hasNextPage endCursor } edges { node { ${fields} } } } }`
+      const result = await finaleGraphQL(query) as { data?: { productViewConnection?: { pageInfo: { hasNextPage: boolean; endCursor: string }; edges: Array<{ node: FullNode }> } }; errors?: Array<{ message: string }> }
       if (result.errors?.length) throw new Error(result.errors[0].message)
       const conn = result.data?.productViewConnection
       if (!conn) throw new Error('No productViewConnection in GraphQL response')
-      for (const edge of conn.edges) allStockProducts.push(edge.node)
+      for (const edge of conn.edges) nodes.push(edge.node)
       hasNextPage = conn.pageInfo.hasNextPage
       cursor = conn.pageInfo.endCursor
     }
-  } catch (gqlErr) {
-    const errMsg = gqlErr instanceof Error ? gqlErr.message : String(gqlErr)
-    console.warn('[sync] GraphQL stock query failed, falling back to REST:', errMsg)
-    ;(globalThis as Record<string, unknown>).__lastGqlError = errMsg
-    allStockProducts = [] // signal to fall through
+    return nodes
   }
 
-  if (allStockProducts.length > 0) {
+  const STOCK_FIELDS = 'productId description category status unitsInStock stockAvailableToPromiseUnits stockSublocationSummary'
+  const SALES_FIELDS = 'universalProductCode averageCost salesLast7Days salesLast30Days salesLast60Days salesLast90Days salesLastMonth salesThisMonth'
+  // Try active-only filter first; fall back to no filter if unsupported
+  const STATUS_FILTER = 'filter: { statusId: { eq: "PRODUCT_ACTIVE" } }'
+
+  let allProducts: FullNode[] = []
+  let hasSalesData = false
+  let usedStatusFilter = false
+  let gqlErrorNote = ''
+
+  // Attempt 1: combined fields + active filter (fewest API calls)
+  for (const [fields, statusArg, label] of [
+    [`${STOCK_FIELDS} ${SALES_FIELDS}`, STATUS_FILTER, 'combined+filter'],
+    [`${STOCK_FIELDS} ${SALES_FIELDS}`, '',             'combined'],
+    [`${STOCK_FIELDS}`,                 STATUS_FILTER, 'stock+filter'],
+    [`${STOCK_FIELDS}`,                 '',             'stock'],
+  ] as [string, string, string][]) {
+    try {
+      allProducts = await fetchAllPages(fields, statusArg)
+      hasSalesData = fields.includes('salesLast7Days')
+      usedStatusFilter = statusArg !== ''
+      console.log(`[sync] GraphQL OK via ${label}, got ${allProducts.length} products`)
+      break
+    } catch (err) {
+      console.warn(`[sync] GraphQL ${label} failed:`, err instanceof Error ? err.message : err)
+      gqlErrorNote = err instanceof Error ? err.message : String(err)
+      allProducts = []
+    }
+  }
+
+  if (allProducts.length > 0) {
+    // Filter inactive client-side (in case status filter wasn't used)
     let skipped = 0
-    const activeProducts = allStockProducts.filter(p => {
+    const activeProducts = usedStatusFilter ? allProducts : allProducts.filter(p => {
       const s = (p.status || '').toUpperCase()
       if (s === 'PRODUCT_INACTIVE' || s === 'INACTIVE') { skipped++; return false }
       return true
@@ -274,6 +304,7 @@ async function doSync(): Promise<ReturnType<typeof NextResponse.json>> {
     if (activeProducts.length === 0) {
       return NextResponse.json({ error: 'No active products found in Finale.' }, { status: 500 })
     }
+    if (usedStatusFilter) skipped = 0 // server already filtered
 
     const hasSublocs = activeProducts.some(p => p.stockSublocationSummary && p.stockSublocationSummary.trim() !== '')
 
@@ -318,31 +349,9 @@ async function doSync(): Promise<ReturnType<typeof NextResponse.json>> {
       catch (e) { db.exec('ROLLBACK'); console.warn('[sync] Failed to save consumed data:', e) }
     }
 
-    // ── Phase 2: sales query (optional — failure doesn't break stock sync) ──
+    // Save sales data if we got it in the same query
     let salesSynced = 0
-    let salesNote = ''
-    try {
-      type SalesNode = { productId: string; description: string; category: string; unitsInStock: string | number | null; stockAvailableToPromiseUnits: string | number | null; universalProductCode: string | null; averageCost: number | null; salesLast7Days: number | null; salesLast30Days: number | null; salesLast60Days: number | null; salesLast90Days: number | null; salesLastMonth: number | null; salesThisMonth: number | null }
-      const allSales: SalesNode[] = []
-      let hasNextPage2 = true
-      let cursor2: string | null = null
-      while (hasNextPage2) {
-        if (cursor2) await new Promise(r => setTimeout(r, 600))
-        const afterArg = cursor2 ? `, after: "${cursor2}"` : ''
-        const salesQuery = `{
-          productViewConnection(first: 500${afterArg}) {
-            pageInfo { hasNextPage endCursor }
-            edges { node { productId description category unitsInStock stockAvailableToPromiseUnits universalProductCode averageCost salesLast7Days salesLast30Days salesLast60Days salesLast90Days salesLastMonth salesThisMonth } }
-          }
-        }`
-        const r2 = await finaleGraphQL(salesQuery) as { data?: { productViewConnection?: { pageInfo: { hasNextPage: boolean; endCursor: string }; edges: Array<{ node: SalesNode }> } }; errors?: Array<{ message: string }> }
-        if (r2.errors?.length) throw new Error(r2.errors[0].message)
-        const conn2 = r2.data?.productViewConnection
-        if (!conn2) throw new Error('No productViewConnection')
-        for (const edge of conn2.edges) allSales.push(edge.node)
-        hasNextPage2 = conn2.pageInfo.hasNextPage
-        cursor2 = conn2.pageInfo.endCursor
-      }
+    if (hasSalesData) {
       const insSales = db.prepare(`
         INSERT OR REPLACE INTO finale_sales_csv
           (product_id, product_name, category, sales_7d, sales_30d, sales_60d, sales_90d,
@@ -352,19 +361,17 @@ async function doSync(): Promise<ReturnType<typeof NextResponse.json>> {
       db.prepare('DELETE FROM finale_sales_csv').run()
       db.exec('BEGIN')
       try {
-        for (const p of allSales) {
+        for (const p of activeProducts) {
           const pid = (p.productId || '').trim()
           if (!pid) continue
           insSales.run(pid, (p.description||'').trim()||null, (p.category||'').trim()||null, p.salesLast7Days??null, p.salesLast30Days??null, p.salesLast60Days??null, p.salesLast90Days??null, p.salesLastMonth??null, p.salesThisMonth??null, parseFloat(String(p.unitsInStock??'0'))||null, parseFloat(String(p.stockAvailableToPromiseUnits??'0'))||null, p.averageCost??null, p.universalProductCode??null)
           salesSynced++
         }
         db.exec('COMMIT')
-      } catch (e) { db.exec('ROLLBACK'); throw e }
-    } catch (salesErr) {
-      salesNote = ` · Sales sync skipped: ${salesErr instanceof Error ? salesErr.message : salesErr}`
-      console.warn('[sync] Sales query failed (non-fatal):', salesErr)
+      } catch (e) { db.exec('ROLLBACK'); console.warn('[sync] Failed to save sales data:', e) }
     }
 
+    const salesNote = hasSalesData ? '' : ` · Sales skipped: ${gqlErrorNote}`
     return NextResponse.json({
       ok: true,
       source: 'graphql',
