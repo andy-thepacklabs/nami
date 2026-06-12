@@ -77,6 +77,20 @@ export async function GET(req: Request) {
   if (!account) return NextResponse.json({ error: 'No credentials' }, { status: 400 })
 
   const url = new URL(req.url)
+  // ?inspect=sublocation — return raw sublocation API response (first 5 rows + all field keys)
+  if (url.searchParams.get('inspect') === 'sublocation') {
+    try {
+      const res = await finaleGet('sublocation')
+      const data = res.data as Record<string, unknown[]>
+      const keys = Object.keys(data)
+      const sample: Record<string, unknown> = {}
+      for (const k of keys) sample[k] = (data[k] || []).slice(0, 5)
+      return NextResponse.json({ status: res.status, keys, sample })
+    } catch (err) {
+      return NextResponse.json({ error: String(err) }, { status: 500 })
+    }
+  }
+
   // ?inspect=salesorder — return raw field keys + first order's keys
   if (url.searchParams.get('inspect') === 'salesorder') {
     try {
