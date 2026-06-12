@@ -111,6 +111,20 @@ export async function GET(req: Request) {
     }
   }
 
+  // ?inspect=product&id=MM-MPB — check what's stored in DB for a specific product
+  const productId = url.searchParams.get('id')
+  if (url.searchParams.get('inspect') === 'product' && productId) {
+    try {
+      const db = getDb()
+      const stock = db.prepare(`SELECT * FROM finale_stock_csv WHERE product_id = ?`).all(productId)
+      const sales = db.prepare(`SELECT * FROM finale_sales_csv WHERE product_id = ?`).get(productId)
+      const consumed = db.prepare(`SELECT * FROM finale_consumed_90d WHERE product_id = ?`).get(productId)
+      return NextResponse.json({ stock, sales, consumed })
+    } catch (err) {
+      return NextResponse.json({ error: String(err) }, { status: 500 })
+    }
+  }
+
   // Default: GraphQL introspection
   try {
     const introspectQuery = `{ __type(name: "product") { fields { name } } }`
@@ -395,12 +409,17 @@ async function doSync(): Promise<ReturnType<typeof NextResponse.json>> {
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
       `)
       db.prepare('DELETE FROM finale_sales_csv').run()
+      const parseSalesNum = (v: unknown) => {
+        if (v == null) return null
+        const n = parseFloat(String(v).replace(/,/g, ''))
+        return isNaN(n) ? null : n
+      }
       db.exec('BEGIN')
       try {
         for (const p of activeProducts) {
           const pid = (p.productId || '').trim()
           if (!pid) continue
-          insSales.run(pid, (p.description||'').trim()||null, (p.category||'').trim()||null, p.salesLast7Days??null, p.salesLast30Days??null, p.salesLast60Days??null, p.salesLast90Days??null, p.salesLastMonth??null, p.salesThisMonth??null, parseFloat(String(p.unitsInStock??'0'))||null, parseFloat(String(p.stockAvailableToPromiseUnits??'0'))||null, p.averageCost??null, p.universalProductCode??null)
+          insSales.run(pid, (p.description||'').trim()||null, (p.category||'').trim()||null, parseSalesNum(p.salesLast7Days), parseSalesNum(p.salesLast30Days), parseSalesNum(p.salesLast60Days), parseSalesNum(p.salesLast90Days), parseSalesNum(p.salesLastMonth), parseSalesNum(p.salesThisMonth), parseFloat(String(p.unitsInStock??'0'))||null, parseFloat(String(p.stockAvailableToPromiseUnits??'0'))||null, p.averageCost??null, p.universalProductCode??null)
           salesSynced++
         }
         db.exec('COMMIT')

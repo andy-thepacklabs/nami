@@ -9,6 +9,7 @@ interface HomeStats {
   totalSkus: number
   lowStock: number
   outOfStock: number
+  outOfStockList: { product_id: string; product_name: string | null; category: string | null }[]
   byCategory: { category: string; total_qty: number; total_value: number; sku_count: number }[]
   reorderTop: { product_id: string; product_name: string | null; qoh: number; monthly_req: number; mo_on_hand: number }[]
   topConsumed: { product_id: string; product_name: string | null; consumed_90d: number; consumed_7d: number }[]
@@ -30,12 +31,15 @@ function fmtM(v: number | null | undefined) {
 const COLORS = ['#f97316', '#22c55e', '#3b82f6', '#a855f7', '#eab308', '#ef4444', '#06b6d4']
 
 function StatCard({
-  icon, label, value, sub, color = 'text-white'
+  icon, label, value, sub, color = 'text-white', onClick
 }: {
-  icon: React.ReactNode; label: string; value: string; sub?: string; color?: string
+  icon: React.ReactNode; label: string; value: string; sub?: string; color?: string; onClick?: () => void
 }) {
   return (
-    <div className="bg-[#111] border border-orange-900/20 rounded-xl p-5 flex items-start gap-4">
+    <div
+      className={`bg-[#111] border border-orange-900/20 rounded-xl p-5 flex items-start gap-4 ${onClick ? 'cursor-pointer hover:border-orange-500/40 hover:bg-white/5 transition-colors' : ''}`}
+      onClick={onClick}
+    >
       <div className="text-orange-500 mt-0.5">{icon}</div>
       <div className="flex-1 min-w-0">
         <div className="text-xs font-bold uppercase tracking-widest text-white/50 mb-1">{label}</div>
@@ -49,6 +53,8 @@ function StatCard({
 export default function HomePanel() {
   const [data, setData] = useState<HomeStats | null>(null)
   const [loading, setLoading] = useState(true)
+  const [showOos, setShowOos] = useState(false)
+  const [oosSearch, setOosSearch] = useState('')
 
   const load = async () => {
     setLoading(true)
@@ -77,6 +83,7 @@ export default function HomePanel() {
   }))
 
   return (
+    <>
     <div className="flex-1 overflow-auto p-6 space-y-6 bg-black">
 
       {/* Header */}
@@ -116,8 +123,9 @@ export default function HomePanel() {
           icon={<AlertTriangle className="w-6 h-6" />}
           label="Out of Stock SKUs"
           value={data ? fmt(data.outOfStock) : '—'}
-          sub="QoH = 0"
+          sub="QoH = 0 · Click to view"
           color="text-red-400"
+          onClick={() => { setOosSearch(''); setShowOos(true) }}
         />
         <StatCard
           icon={<ShoppingCart className="w-6 h-6" />}
@@ -308,5 +316,53 @@ export default function HomePanel() {
       )}
 
     </div>
+
+    {/* Out of Stock modal */}
+    {showOos && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm" onClick={() => setShowOos(false)}>
+        <div className="bg-[#111] border border-orange-900/30 rounded-xl w-full max-w-2xl max-h-[80vh] flex flex-col mx-4" onClick={e => e.stopPropagation()}>
+          <div className="flex items-center justify-between px-5 py-4 border-b border-orange-900/20 shrink-0">
+            <div>
+              <div className="text-sm font-extrabold uppercase tracking-widest text-red-400">Out of Stock SKUs</div>
+              <div className="text-xs text-white/30 mt-0.5">{(data?.outOfStockList ?? []).length} products · QoH = 0</div>
+            </div>
+            <button onClick={() => setShowOos(false)} className="text-white/30 hover:text-white text-xl leading-none">✕</button>
+          </div>
+          <div className="px-5 py-3 border-b border-orange-900/10 shrink-0">
+            <input
+              autoFocus
+              type="text"
+              placeholder="Search SKU or name…"
+              value={oosSearch}
+              onChange={e => setOosSearch(e.target.value)}
+              className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder:text-white/20 outline-none focus:border-orange-500/40"
+            />
+          </div>
+          <div className="overflow-auto flex-1">
+            <table className="w-full text-xs">
+              <thead className="sticky top-0 bg-[#111]">
+                <tr className="border-b border-white/10">
+                  <th className="text-left px-5 py-3 font-extrabold uppercase tracking-widest text-white/40">Product ID</th>
+                  <th className="text-left px-5 py-3 font-extrabold uppercase tracking-widest text-white/40">Name</th>
+                  <th className="text-left px-5 py-3 font-extrabold uppercase tracking-widest text-white/40">Category</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/5">
+                {(data?.outOfStockList ?? [])
+                  .filter(r => !oosSearch || r.product_id.toLowerCase().includes(oosSearch.toLowerCase()) || (r.product_name || '').toLowerCase().includes(oosSearch.toLowerCase()))
+                  .map(r => (
+                    <tr key={r.product_id} className="hover:bg-white/5">
+                      <td className="px-5 py-2.5 font-mono font-semibold text-red-400">{r.product_id}</td>
+                      <td className="px-5 py-2.5 text-white/60">{r.product_name || '—'}</td>
+                      <td className="px-5 py-2.5 text-white/30">{r.category || '—'}</td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   )
 }

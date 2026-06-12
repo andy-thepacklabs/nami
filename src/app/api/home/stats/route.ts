@@ -70,6 +70,16 @@ export async function GET(req: Request) {
     return r?.cnt ?? 0
   }, 0)
 
+  const outOfStockList = tryQuery(() =>
+    db.prepare(`
+      SELECT product_id, MAX(product_name) AS product_name, MAX(category) AS category
+      FROM finale_stock_csv
+      WHERE qoh <= 0 AND ${STOCK_FILTER}
+      GROUP BY product_id
+      ORDER BY category, product_id
+    `).all() as { product_id: string; product_name: string | null; category: string | null }[]
+  , [])
+
   // Inventory by category — total qty + value per category
   const byCategory = tryQuery(() =>
     db.prepare(`
@@ -129,5 +139,5 @@ export async function GET(req: Request) {
     `).all() as { product_id: string; product_name: string | null; category: string | null; sales_7d: number; sales_30d: number; sales_60d: number; sales_90d: number }[]
   , [])
 
-  return NextResponse.json({ totalValue, totalSkus, lowStock, outOfStock, byCategory, reorderTop, topConsumed, topSelling })
+  return NextResponse.json({ totalValue, totalSkus, lowStock, outOfStock, outOfStockList, byCategory, reorderTop, topConsumed, topSelling })
 }

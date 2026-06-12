@@ -100,7 +100,7 @@ export default function AssistantChat() {
           <div className="flex items-center gap-3 px-4 py-3 border-b border-orange-900/30 bg-[#111] shrink-0">
             <img src="/nami-bg.png" alt="Nami" className="w-8 h-8 rounded-full object-cover ring-1 ring-orange-500/40" />
             <div>
-              <div className="text-sm font-bold text-white">Nami Assistant</div>
+              <div className="text-sm font-bold text-white">Nami</div>
               <div className="text-xs text-white/40">Powered by live inventory data</div>
             </div>
             <button

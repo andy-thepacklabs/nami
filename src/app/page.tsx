@@ -5,7 +5,7 @@ import {
   AlertTriangle, CheckCircle2, Clock, TrendingUp, Search,
   Filter, RefreshCw, Plus, ChevronRight, Bell, BarChart2,
   Package, MapPin, User, ArrowUpDown, Zap, Database, ClipboardCheck, X,
-  Compass, Anchor, FileSpreadsheet, Settings, Shield
+  Compass, Anchor, FileSpreadsheet, Settings, Shield, ShoppingCart
 } from 'lucide-react'
 import { cn, TYPE_LABELS, STATUS_LABELS, STATUS_COLORS, PRIORITY_LABELS, PRIORITY_COLORS, fmtDelta } from '@/lib/utils'
 import type { Discrepancy, DashboardStats } from '@/lib/db'
@@ -19,6 +19,10 @@ import SettingsPanel from '@/components/SettingsPanel'
 import CycleCountPanel from '@/components/CycleCountPanel'
 import ReconcileTab from '@/components/ReconcileTab'
 import FinaleReportPanel from '@/components/FinaleReportPanel'
+import ReorderPanel from '@/components/ReorderPanel'
+import HomePanel from '@/components/HomePanel'
+import WohTable from '@/components/WohTable'
+import AssistantChat from '@/components/AssistantChat'
 
 interface HotBin { bin: string; count: number; critical_count: number }
 
@@ -38,13 +42,14 @@ interface ListData {
 
 const REFRESH_INTERVAL = 30_000
 
-interface WohRow { product_id: string; product_name: string | null; qoh: number; available: number; consumed_90d: number | null }
+interface WohRow { product_id: string; product_name: string | null; qoh: number; available: number; consumed_90d: number | null; sales_90d?: number | null }
 // keep alias for backwards compat in JSX below
 type SleeveRow = WohRow
 
 export default function Dashboard() {
-  const [activeTab, setActiveTab] = useState<'home' | 'dashboard' | 'reconcile' | 'cyclecount' | 'finalereport'>('home')
-  const [wohTab, setWohTab] = useState<'sleeve' | 'display' | 'mylar' | 'tube' | 'cone' | 'label' | 'grinder' | 'lab' | null>(null)
+  const [activeTab, setActiveTab] = useState<'splash' | 'home' | 'dashboard' | 'reconcile' | 'cyclecount' | 'finalereport'>('home')
+  const [wohTab, setWohTab] = useState<'sleeve' | 'display' | 'mylar' | 'tube' | 'cone' | 'label' | 'grinder' | 'lab' | 'marketing' | 'insert' | null>(null)
+  const [dashSub, setDashSub] = useState<'woh' | 'reorder'>('woh')
   const [labelRows, setLabelRows] = useState<WohRow[]>([])
   const [labelLoading, setLabelLoading] = useState(false)
   const [labelSearch, setLabelSearch] = useState('')
@@ -52,6 +57,10 @@ export default function Dashboard() {
   const [grinderLoading, setGrinderLoading] = useState(false)
   const [labRows, setLabRows] = useState<WohRow[]>([])
   const [labLoading, setLabLoading] = useState(false)
+  const [marketingRows, setMarketingRows] = useState<WohRow[]>([])
+  const [marketingLoading, setMarketingLoading] = useState(false)
+  const [insertRows, setInsertRows] = useState<WohRow[]>([])
+  const [insertLoading, setInsertLoading] = useState(false)
   const [sleeveRows, setSleeveRows] = useState<WohRow[]>([])
   const [sleeveLoading, setSleeveLoading] = useState(false)
   const [displayRows, setDisplayRows] = useState<WohRow[]>([])
@@ -110,6 +119,16 @@ export default function Dashboard() {
   useEffect(() => { const id = setInterval(() => refresh(true), REFRESH_INTERVAL); return () => clearInterval(id) }, [refresh])
   useEffect(() => { setPage(1) }, [statusFilter, priorityFilter, binFilter, search])
 
+  // Clear all cached WoH rows after Finale sync so they re-fetch with fresh data
+  useEffect(() => {
+    const clear = () => {
+      setSleeveRows([]); setDisplayRows([]); setMylarRows([]); setTubeRows([])
+      setConeRows([]); setLabelRows([]); setGrinderRows([]); setLabRows([]); setMarketingRows([]); setInsertRows([])
+    }
+    window.addEventListener('finale-synced', clear)
+    return () => window.removeEventListener('finale-synced', clear)
+  }, [])
+
   if (loading) {
     return (
       <div className="min-h-screen relative overflow-hidden bg-black flex items-center justify-center">
@@ -126,74 +145,105 @@ export default function Dashboard() {
 
   const { stats, byType, recentActivity, hotBins } = statsData!
 
+  const SideNavItem = ({ tab, icon, label }: { tab: typeof activeTab; icon: React.ReactNode; label: string }) => (
+    <button
+      onClick={() => setActiveTab(tab)}
+      className={cn(
+        'w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-bold transition-colors text-left',
+        activeTab === tab
+          ? 'bg-orange-500/15 text-orange-400'
+          : 'text-white/50 hover:bg-white/5 hover:text-white'
+      )}
+    >
+      {icon}
+      <span>{label}</span>
+    </button>
+  )
+
   return (
-    <div className="h-screen flex flex-col bg-black overflow-hidden">
-      {/* Top nav — orange gradient border */}
-      <header className="h-16 border-b border-orange-900/40 bg-gradient-to-r from-[#0d0a07] via-[#12100d] to-[#0d0a07] flex items-center px-6 gap-5 sticky top-0 z-30">
-        <div className="flex items-center gap-3">
+    <div className="h-screen flex bg-black overflow-hidden">
+      <AssistantChat />
+
+      {/* ── Left sidebar ── */}
+      <aside className="w-64 shrink-0 flex flex-col bg-gradient-to-b from-[#0d0a07] to-[#09090b] border-r border-orange-900/30 z-30">
+        {/* Logo */}
+        <div className="px-4 py-8 border-b border-orange-900/30 flex items-center gap-3">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src="https://thepacklabs.com/wp-content/uploads/2025/03/packlogo.png"
             alt="The Pack Labs"
-            className="h-8 w-auto"
+            className="h-14 w-auto"
           />
-          <div className="w-px h-8 bg-orange-900/40" />
-          <div className="flex items-center gap-2">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/nami.png" alt="Nami" className="h-9 w-auto object-contain" onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
-            <span className="text-lg font-black text-orange-400 tracking-tight uppercase">Nami</span>
+          <div className="w-px h-10 bg-orange-900/40" />
+          <button
+            onClick={() => setActiveTab('splash')}
+            className="text-2xl font-black text-orange-400 tracking-tight uppercase hover:text-orange-300 transition-colors"
+          >
+            Nami
+          </button>
+        </div>
+
+        {/* Nav items */}
+        <nav className="flex-1 px-3 py-12 space-y-1 overflow-y-auto">
+          <SideNavItem tab="home"        icon={<BarChart2 className="w-4 h-4 shrink-0" />}       label="Dashboard" />
+          <SideNavItem tab="dashboard"   icon={<Package className="w-4 h-4 shrink-0" />}         label="Inventory" />
+          <SideNavItem tab="finalereport" icon={<FileSpreadsheet className="w-4 h-4 shrink-0" />} label="Finale Report" />
+          <SideNavItem tab="reconcile"   icon={<ClipboardCheck className="w-4 h-4 shrink-0" />}  label="Reconcile" />
+          <div className="pt-2 border-t border-white/10 space-y-1 mt-2">
+            <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-bold text-white/20 cursor-not-allowed" disabled>
+              <ShoppingCart className="w-4 h-4 shrink-0" /><span>Purchasing</span>
+            </button>
+            <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-bold text-white/20 cursor-not-allowed" disabled>
+              <TrendingUp className="w-4 h-4 shrink-0" /><span>Sales</span>
+            </button>
+            <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-bold text-white/20 cursor-not-allowed" disabled>
+              <Bell className="w-4 h-4 shrink-0" /><span>Alerts</span>
+            </button>
           </div>
-        </div>
+        </nav>
 
-        {/* Top-level tabs */}
-        <div className="flex items-center gap-1 mx-4">
-          <button
-            onClick={() => setActiveTab('home')}
-            className={cn('px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wide transition-colors',
-              activeTab === 'home' ? 'bg-orange-500/15 text-orange-400' : 'text-orange-800 hover:text-orange-400'
-            )}
-          >
-            <Anchor className="w-3.5 h-3.5 inline mr-1.5 -mt-0.5" />Home
-          </button>
-          <button
-            onClick={() => setActiveTab('dashboard')}
-            className={cn('px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wide transition-colors',
-              activeTab === 'dashboard' ? 'bg-orange-500/15 text-orange-400' : 'text-orange-800 hover:text-orange-400'
-            )}
-          >
-            <BarChart2 className="w-3.5 h-3.5 inline mr-1.5 -mt-0.5" />Dashboard
-          </button>
-          <button
-            onClick={() => setActiveTab('finalereport')}
-            className={cn('px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wide transition-colors',
-              activeTab === 'finalereport' ? 'bg-orange-500/15 text-orange-400' : 'text-orange-800 hover:text-orange-400'
-            )}
-          >
-            <FileSpreadsheet className="w-3.5 h-3.5 inline mr-1.5 -mt-0.5" />Finale Report
+        {/* Bottom actions */}
+        <div className="px-3 py-4 border-t border-orange-900/30 space-y-1">
+          <button onClick={() => setShowSettings(true)} className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-bold text-white/50 hover:bg-white/5 hover:text-white transition-colors">
+            <Settings className="w-4 h-4 shrink-0" /><span>Settings</span>
           </button>
         </div>
+      </aside>
 
-        <div className="flex-1" />
+      {/* ── Right main area ── */}
+      <div className="flex-1 flex flex-col overflow-hidden">
 
-<button onClick={() => setShowSheets(true)} className="btn text-xs bg-orange-600/20 text-orange-400 border border-orange-600/30 hover:bg-orange-600/30">
-          <FileSpreadsheet className="w-4 h-4" /> Daily Cycle Count
-        </button>
+        {/* Top bar */}
+        <header className="h-14 border-b border-orange-900/30 bg-[#0d0a07] flex items-center px-5 gap-3 shrink-0 z-20">
+          <div className="flex-1" />
+          <button onClick={() => setShowSheets(true)} className="btn text-sm bg-orange-600/20 text-white border border-orange-600/30 hover:bg-orange-600/30">
+            <FileSpreadsheet className="w-4 h-4" /> Daily Cycle Count
+          </button>
+          <button onClick={() => setShowReport(true)} className="btn-ghost text-sm">
+            <BarChart2 className="w-4 h-4" /> Report
+          </button>
+          <button onClick={() => setShowNew(true)} className="btn-primary text-sm">
+            <Plus className="w-4 h-4" /> Log Issue
+          </button>
+          <button onClick={() => refresh()} disabled={refreshing} className="btn-ghost w-10 h-10 p-0 justify-center rounded-lg" title="Refresh">
+            <RefreshCw className={cn('w-5 h-5', refreshing && 'animate-spin')} />
+          </button>
+        </header>
 
-        <button onClick={() => setShowReport(true)} className="btn-ghost text-xs">
-          <BarChart2 className="w-4 h-4" /> Report
-        </button>
-        <button onClick={() => setShowNew(true)} className="btn-primary text-xs">
-          <Plus className="w-4 h-4" /> Log Issue
-        </button>
-        <button onClick={() => refresh()} disabled={refreshing} className="btn-ghost w-9 h-9 p-0 justify-center rounded-lg" title="Refresh">
-          <RefreshCw className={cn('w-4 h-4', refreshing && 'animate-spin')} />
-        </button>
-        <button onClick={() => setShowSettings(true)} className="btn-ghost w-9 h-9 p-0 justify-center rounded-lg" title="Settings">
-          <Settings className="w-4 h-4" />
-        </button>
-      </header>
-
-      {activeTab === 'reconcile' ? (
+      {activeTab === 'splash' ? (
+        <div
+          className="flex-1 bg-black flex items-center justify-center cursor-pointer"
+          style={{ minHeight: 0 }}
+          onClick={() => setActiveTab('home')}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/nami-bg.png"
+            alt="Nami"
+            style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', display: 'block' }}
+          />
+        </div>
+      ) : activeTab === 'reconcile' ? (
         <ReconcileTab />
       ) : activeTab === 'cyclecount' ? (
         <CycleCountPanel onClose={() => setActiveTab('dashboard')} inline />
@@ -202,31 +252,41 @@ export default function Dashboard() {
           <FinaleReportPanel onClose={() => setActiveTab('dashboard')} />
         </div>
       ) : activeTab === 'home' ? (
-        /* ── Pure Home tab: full artwork centered, black background ── */
-        <div className="flex-1 bg-black flex items-center justify-center" style={{ minHeight: 0 }}>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src="/nami-bg.png"
-            alt="Nami"
-            style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', display: 'block' }}
-          />
-        </div>
+        <HomePanel />
       ) : (
         /* ── Dashboard tab ── */
         <div className="flex-1 flex flex-col overflow-hidden">
           {/* Dashboard sub-tabs */}
-          <div className="flex gap-1 px-6 pt-4 border-b border-orange-900/30">
-            <button className="px-4 py-2 rounded-t-lg text-xs font-bold uppercase tracking-wide bg-orange-500/15 text-orange-400 border border-orange-900/30 border-b-0 -mb-px">
-              Week On Hand
+          <div className="flex items-center gap-2 px-6 py-3 border-b border-orange-900/30 bg-black shrink-0">
+            <button
+              onClick={() => setDashSub('woh')}
+              className={cn('flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-bold uppercase tracking-wide transition-colors',
+                dashSub === 'woh' ? 'bg-orange-500/15 text-orange-400 ring-1 ring-orange-500/30' : 'text-white/50 hover:bg-white/5 hover:text-white'
+              )}
+            >
+              <BarChart2 className="w-4 h-4" />Week On Hand
+            </button>
+            <button
+              onClick={() => setDashSub('reorder')}
+              className={cn('flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-bold uppercase tracking-wide transition-colors',
+                dashSub === 'reorder' ? 'bg-orange-500/15 text-orange-400 ring-1 ring-orange-500/30' : 'text-white/50 hover:bg-white/5 hover:text-white'
+              )}
+            >
+              <AlertTriangle className="w-4 h-4" />Reorder Recommendations
             </button>
           </div>
 
-          {/* Week On Hand content */}
+          {/* Sub-tab content */}
+          {dashSub === 'reorder' ? (
+            <div className="flex-1 flex flex-col overflow-hidden">
+              <ReorderPanel />
+            </div>
+          ) : (
           <div className="flex-1 flex overflow-hidden">
             {/* Left — Raw Materials panel */}
             <div className="w-56 shrink-0 border-r border-orange-900/30 flex flex-col bg-black">
               <div className="px-4 py-3 border-b border-orange-900/30">
-                <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-orange-700">Raw Materials</h3>
+                <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-white/50">Raw Materials</h3>
               </div>
               <div className="flex-1 overflow-y-auto p-2 flex flex-col gap-1">
                 <button
@@ -239,11 +299,11 @@ export default function Dashboard() {
                   }}
                   className={cn(
                     'w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left transition-colors',
-                    wohTab === 'sleeve' ? 'bg-orange-500/15 text-orange-400' : 'text-orange-700 hover:bg-orange-500/10 hover:text-orange-400'
+                    wohTab === 'sleeve' ? 'bg-orange-500/15 text-orange-400' : 'text-white/50 hover:bg-white/5 hover:text-white'
                   )}
                 >
                   <ChevronRight className="w-3 h-3 shrink-0" />
-                  <span className="text-[11px] font-bold uppercase tracking-wider">Sleeve</span>
+                  <span className="text-sm font-bold uppercase tracking-wider">Sleeve</span>
                 </button>
                 <button
                   onClick={() => {
@@ -255,11 +315,11 @@ export default function Dashboard() {
                   }}
                   className={cn(
                     'w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left transition-colors',
-                    wohTab === 'display' ? 'bg-orange-500/15 text-orange-400' : 'text-orange-700 hover:bg-orange-500/10 hover:text-orange-400'
+                    wohTab === 'display' ? 'bg-orange-500/15 text-orange-400' : 'text-white/50 hover:bg-white/5 hover:text-white'
                   )}
                 >
                   <ChevronRight className="w-3 h-3 shrink-0" />
-                  <span className="text-[11px] font-bold uppercase tracking-wider">Display</span>
+                  <span className="text-sm font-bold uppercase tracking-wider">Display</span>
                 </button>
                 <button
                   onClick={() => {
@@ -271,11 +331,11 @@ export default function Dashboard() {
                   }}
                   className={cn(
                     'w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left transition-colors',
-                    wohTab === 'mylar' ? 'bg-orange-500/15 text-orange-400' : 'text-orange-700 hover:bg-orange-500/10 hover:text-orange-400'
+                    wohTab === 'mylar' ? 'bg-orange-500/15 text-orange-400' : 'text-white/50 hover:bg-white/5 hover:text-white'
                   )}
                 >
                   <ChevronRight className="w-3 h-3 shrink-0" />
-                  <span className="text-[11px] font-bold uppercase tracking-wider">Mylar</span>
+                  <span className="text-sm font-bold uppercase tracking-wider">Mylar</span>
                 </button>
                 <button
                   onClick={() => {
@@ -287,11 +347,11 @@ export default function Dashboard() {
                   }}
                   className={cn(
                     'w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left transition-colors',
-                    wohTab === 'tube' ? 'bg-orange-500/15 text-orange-400' : 'text-orange-700 hover:bg-orange-500/10 hover:text-orange-400'
+                    wohTab === 'tube' ? 'bg-orange-500/15 text-orange-400' : 'text-white/50 hover:bg-white/5 hover:text-white'
                   )}
                 >
                   <ChevronRight className="w-3 h-3 shrink-0" />
-                  <span className="text-[11px] font-bold uppercase tracking-wider">Tube</span>
+                  <span className="text-sm font-bold uppercase tracking-wider">Tube</span>
                 </button>
                 <button
                   onClick={() => {
@@ -303,11 +363,11 @@ export default function Dashboard() {
                   }}
                   className={cn(
                     'w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left transition-colors',
-                    wohTab === 'cone' ? 'bg-orange-500/15 text-orange-400' : 'text-orange-700 hover:bg-orange-500/10 hover:text-orange-400'
+                    wohTab === 'cone' ? 'bg-orange-500/15 text-orange-400' : 'text-white/50 hover:bg-white/5 hover:text-white'
                   )}
                 >
                   <ChevronRight className="w-3 h-3 shrink-0" />
-                  <span className="text-[11px] font-bold uppercase tracking-wider">Cone</span>
+                  <span className="text-sm font-bold uppercase tracking-wider">Cone</span>
                 </button>
                 <button
                   onClick={() => {
@@ -319,11 +379,11 @@ export default function Dashboard() {
                   }}
                   className={cn(
                     'w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left transition-colors',
-                    wohTab === 'label' ? 'bg-orange-500/15 text-orange-400' : 'text-orange-700 hover:bg-orange-500/10 hover:text-orange-400'
+                    wohTab === 'label' ? 'bg-orange-500/15 text-orange-400' : 'text-white/50 hover:bg-white/5 hover:text-white'
                   )}
                 >
                   <ChevronRight className="w-3 h-3 shrink-0" />
-                  <span className="text-[11px] font-bold uppercase tracking-wider">Label</span>
+                  <span className="text-sm font-bold uppercase tracking-wider">Label</span>
                 </button>
                 <button
                   onClick={() => {
@@ -335,11 +395,11 @@ export default function Dashboard() {
                   }}
                   className={cn(
                     'w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left transition-colors',
-                    wohTab === 'grinder' ? 'bg-orange-500/15 text-orange-400' : 'text-orange-700 hover:bg-orange-500/10 hover:text-orange-400'
+                    wohTab === 'grinder' ? 'bg-orange-500/15 text-orange-400' : 'text-white/50 hover:bg-white/5 hover:text-white'
                   )}
                 >
                   <ChevronRight className="w-3 h-3 shrink-0" />
-                  <span className="text-[11px] font-bold uppercase tracking-wider">Grinder</span>
+                  <span className="text-sm font-bold uppercase tracking-wider">Grinder</span>
                 </button>
                 <button
                   onClick={() => {
@@ -351,11 +411,43 @@ export default function Dashboard() {
                   }}
                   className={cn(
                     'w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left transition-colors',
-                    wohTab === 'lab' ? 'bg-orange-500/15 text-orange-400' : 'text-orange-700 hover:bg-orange-500/10 hover:text-orange-400'
+                    wohTab === 'lab' ? 'bg-orange-500/15 text-orange-400' : 'text-white/50 hover:bg-white/5 hover:text-white'
                   )}
                 >
                   <ChevronRight className="w-3 h-3 shrink-0" />
-                  <span className="text-[11px] font-bold uppercase tracking-wider">Lab</span>
+                  <span className="text-sm font-bold uppercase tracking-wider">Lab</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setWohTab('marketing')
+                    if (marketingRows.length === 0) {
+                      setMarketingLoading(true)
+                      fetch('/api/woh/marketing').then(r => r.json()).then(d => { setMarketingRows(d.rows || []); setMarketingLoading(false) })
+                    }
+                  }}
+                  className={cn(
+                    'w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left transition-colors',
+                    wohTab === 'marketing' ? 'bg-orange-500/15 text-orange-400' : 'text-white/50 hover:bg-white/5 hover:text-white'
+                  )}
+                >
+                  <ChevronRight className="w-3 h-3 shrink-0" />
+                  <span className="text-sm font-bold uppercase tracking-wider">Marketing</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setWohTab('insert')
+                    if (insertRows.length === 0) {
+                      setInsertLoading(true)
+                      fetch('/api/woh/insert').then(r => r.json()).then(d => { setInsertRows(d.rows || []); setInsertLoading(false) })
+                    }
+                  }}
+                  className={cn(
+                    'w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left transition-colors',
+                    wohTab === 'insert' ? 'bg-orange-500/15 text-orange-400' : 'text-white/50 hover:bg-white/5 hover:text-white'
+                  )}
+                >
+                  <ChevronRight className="w-3 h-3 shrink-0" />
+                  <span className="text-sm font-bold uppercase tracking-wider">Insert</span>
                 </button>
               </div>
             </div>
@@ -367,7 +459,7 @@ export default function Dashboard() {
                 <div className="px-6 py-2.5 border-b border-orange-900/20 bg-black shrink-0 flex items-center gap-3">
                   <Search className="w-3.5 h-3.5 text-orange-700 shrink-0" />
                   <input
-                    className="flex-1 bg-transparent text-xs text-orange-200 placeholder-orange-900 outline-none"
+                    className="flex-1 bg-transparent text-sm text-orange-200 placeholder-orange-900 outline-none"
                     placeholder="Search product ID or name..."
                     value={wohSearch}
                     onChange={e => setWohSearch(e.target.value)}
@@ -379,506 +471,102 @@ export default function Dashboard() {
               )}
               {wohTab === 'sleeve' ? (
                 <>
-                  <div className="px-6 py-3 border-b border-orange-900/30 flex items-center gap-3">
-                    <span className="text-xs font-bold uppercase tracking-widest text-orange-500">Sleeve</span>
-                    {!sleeveLoading && <span className="text-[10px] text-orange-800">{sleeveRows.length} SKUs</span>}
+                  <div className="px-6 py-3 border-b border-white/10 flex items-center gap-3">
+                    <span className="text-sm font-bold uppercase tracking-widest text-white/80">Sleeve</span>
+                    {!sleeveLoading && <span className="text-xs text-white/30">{sleeveRows.length} SKUs</span>}
                   </div>
                   <div className="flex-1 overflow-auto">
-                    {sleeveLoading ? (
-                      <div className="flex items-center justify-center h-32 gap-2 text-orange-800 text-xs">
-                        <RefreshCw className="w-4 h-4 animate-spin" /> Loading...
-                      </div>
-                    ) : sleeveRows.length === 0 ? (
-                      <div className="flex items-center justify-center h-32 text-xs text-orange-900">
-                        No SLV items found. Sync Finale Report first.
-                      </div>
-                    ) : (
-                      <table className="w-full text-xs">
-                        <thead className="sticky top-0 bg-black z-10">
-                          <tr className="border-b border-orange-900/30">
-                            <th className="text-left px-4 py-3 text-xs font-extrabold uppercase tracking-[0.1em] text-orange-600">Product ID</th>
-                            <th className="text-right px-4 py-3 text-xs font-extrabold uppercase tracking-[0.1em] text-orange-600">Stock QoH</th>
-                            <th className="text-right px-4 py-3 text-xs font-extrabold uppercase tracking-[0.1em] text-orange-600">Stock Available</th>
-                            <th className="text-right px-4 py-3 text-xs font-extrabold uppercase tracking-[0.1em] text-orange-600">Consumed 90d</th>
-                            <th className="text-right px-4 py-3 text-xs font-extrabold uppercase tracking-[0.1em] text-orange-600">Monthly Required</th>
-                            <th className="text-right px-4 py-3 text-xs font-extrabold uppercase tracking-[0.1em] text-orange-600">Mo On Hand</th>
-                            <th className="text-right px-4 py-3 text-xs font-extrabold uppercase tracking-[0.1em] text-orange-600">Mo On Hand (Total)</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-orange-900/20">
-                          {(wohSearch ? sleeveRows.filter(r => r.product_id.toLowerCase().includes(wohSearch.toLowerCase()) || (r.product_name || '').toLowerCase().includes(wohSearch.toLowerCase())) : sleeveRows).map(row => {
-                            const monthlyRequired = row.consumed_90d != null && row.consumed_90d > 0
-                              ? row.consumed_90d / 3
-                              : null
-                            const wohQoh = monthlyRequired != null && row.qoh > 0
-                              ? (row.qoh / monthlyRequired)
-                              : null
-                            const wohAvailable = monthlyRequired != null && row.available > 0
-                              ? (row.available / monthlyRequired)
-                              : null
-                            return (
-                              <tr key={row.product_id} className="hover:bg-orange-500/5 transition-colors">
-                                <td className="px-4 py-2.5">
-                                  <div className="font-mono font-semibold text-orange-300">{row.product_id}</div>
-                                  {row.product_name && <div className="text-xs text-orange-800 truncate max-w-[200px]">{row.product_name}</div>}
-                                </td>
-                                <td className="px-4 py-2.5 text-right text-sm font-mono tabular-nums text-white font-bold">{row.qoh.toLocaleString()}</td>
-                                <td className="px-4 py-2.5 text-right text-sm font-mono tabular-nums text-emerald-400">{row.available.toLocaleString()}</td>
-                                <td className="px-4 py-2.5 text-right text-sm font-mono tabular-nums text-amber-400">
-                                  {row.consumed_90d != null ? Math.round(row.consumed_90d).toLocaleString() : '—'}
-                                </td>
-                                <td className="px-4 py-2.5 text-right text-sm font-mono tabular-nums text-orange-300">
-                                  {monthlyRequired != null ? Math.round(monthlyRequired).toLocaleString() : '—'}
-                                </td>
-                                <td className="px-4 py-2.5 text-right text-sm font-mono tabular-nums text-sky-400">
-                                  {wohQoh != null ? wohQoh.toFixed(1) : '—'}
-                                </td>
-                                <td className="px-4 py-2.5 text-right text-sm font-mono tabular-nums text-sky-300">
-                                  {wohAvailable != null ? wohAvailable.toFixed(1) : '—'}
-                                </td>
-                              </tr>
-                            )
-                          })}
-                        </tbody>
-                      </table>
-                    )}
+                    <WohTable rows={sleeveRows} loading={sleeveLoading} search={wohSearch} emptyMessage="No SLV items found. Sync Finale first." />
                   </div>
                 </>
               ) : wohTab === 'display' ? (
                 <>
                   <div className="px-6 py-3 border-b border-orange-900/30 flex items-center gap-3">
-                    <span className="text-xs font-bold uppercase tracking-widest text-orange-500">Display</span>
-                    {!displayLoading && <span className="text-[10px] text-orange-800">{displayRows.length} SKUs</span>}
+                    <span className="text-sm font-bold uppercase tracking-widest text-white/80">Display</span>
+                    {!displayLoading && <span className="text-xs text-white/30">{displayRows.length} SKUs</span>}
                   </div>
                   <div className="flex-1 overflow-auto">
-                    {displayLoading ? (
-                      <div className="flex items-center justify-center h-32 gap-2 text-orange-800 text-xs">
-                        <RefreshCw className="w-3.5 h-3.5 animate-spin" /> Loading...
-                      </div>
-                    ) : displayRows.length === 0 ? (
-                      <div className="flex items-center justify-center h-32 text-xs text-orange-900">No display data — sync from Finale first.</div>
-                    ) : (
-                      <table className="w-full text-xs">
-                        <thead className="sticky top-0 bg-black z-10">
-                          <tr className="border-b border-orange-900/30">
-                            <th className="text-left px-4 py-3 text-xs font-extrabold uppercase tracking-[0.1em] text-orange-600">Product ID</th>
-                            <th className="text-right px-4 py-3 text-xs font-extrabold uppercase tracking-[0.1em] text-orange-600">Stock QoH</th>
-                            <th className="text-right px-4 py-3 text-xs font-extrabold uppercase tracking-[0.1em] text-orange-600">Stock Available</th>
-                            <th className="text-right px-4 py-3 text-xs font-extrabold uppercase tracking-[0.1em] text-orange-600">Consumed 90d</th>
-                            <th className="text-right px-4 py-3 text-xs font-extrabold uppercase tracking-[0.1em] text-orange-600">Monthly Required</th>
-                            <th className="text-right px-4 py-3 text-xs font-extrabold uppercase tracking-[0.1em] text-orange-600">Mo On Hand</th>
-                            <th className="text-right px-4 py-3 text-xs font-extrabold uppercase tracking-[0.1em] text-orange-600">Mo On Hand (Total)</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-orange-900/20">
-                          {(wohSearch ? displayRows.filter(r => r.product_id.toLowerCase().includes(wohSearch.toLowerCase()) || (r.product_name || '').toLowerCase().includes(wohSearch.toLowerCase())) : displayRows).map(row => {
-                            const monthlyRequired = row.consumed_90d != null && row.consumed_90d > 0
-                              ? row.consumed_90d / 3
-                              : null
-                            const wohQoh = monthlyRequired != null && row.qoh > 0
-                              ? (row.qoh / monthlyRequired)
-                              : null
-                            const wohAvailable = monthlyRequired != null && row.available > 0
-                              ? (row.available / monthlyRequired)
-                              : null
-                            return (
-                              <tr key={row.product_id} className="hover:bg-orange-500/5 transition-colors">
-                                <td className="px-4 py-2.5">
-                                  <div className="font-mono font-semibold text-orange-300">{row.product_id}</div>
-                                  {row.product_name && <div className="text-xs text-orange-800 truncate max-w-[200px]">{row.product_name}</div>}
-                                </td>
-                                <td className="px-4 py-2.5 text-right text-sm font-mono tabular-nums text-white font-bold">{row.qoh.toLocaleString()}</td>
-                                <td className="px-4 py-2.5 text-right text-sm font-mono tabular-nums text-emerald-400">{row.available.toLocaleString()}</td>
-                                <td className="px-4 py-2.5 text-right text-sm font-mono tabular-nums text-amber-400">
-                                  {row.consumed_90d != null ? Math.round(row.consumed_90d).toLocaleString() : '—'}
-                                </td>
-                                <td className="px-4 py-2.5 text-right text-sm font-mono tabular-nums text-orange-300">
-                                  {monthlyRequired != null ? Math.round(monthlyRequired).toLocaleString() : '—'}
-                                </td>
-                                <td className="px-4 py-2.5 text-right text-sm font-mono tabular-nums text-sky-400">
-                                  {wohQoh != null ? wohQoh.toFixed(1) : '—'}
-                                </td>
-                                <td className="px-4 py-2.5 text-right text-sm font-mono tabular-nums text-sky-300">
-                                  {wohAvailable != null ? wohAvailable.toFixed(1) : '—'}
-                                </td>
-                              </tr>
-                            )
-                          })}
-                        </tbody>
-                      </table>
-                    )}
+                    <WohTable rows={displayRows} loading={displayLoading} search={wohSearch} emptyMessage="No display data — sync from Finale first." />
                   </div>
                 </>
               ) : wohTab === 'mylar' ? (
                 <>
-                  <div className="px-6 py-3 border-b border-orange-900/30 flex items-center gap-3">
-                    <span className="text-xs font-bold uppercase tracking-widest text-orange-500">Mylar</span>
-                    {!mylarLoading && <span className="text-[10px] text-orange-800">{mylarRows.length} SKUs</span>}
+                  <div className="px-6 py-3 border-b border-white/10 flex items-center gap-3">
+                    <span className="text-sm font-bold uppercase tracking-widest text-white/80">Mylar</span>
+                    {!mylarLoading && <span className="text-xs text-white/30">{mylarRows.length} SKUs</span>}
                   </div>
                   <div className="flex-1 overflow-auto">
-                    {mylarLoading ? (
-                      <div className="flex items-center justify-center h-32 gap-2 text-orange-800 text-xs">
-                        <RefreshCw className="w-3.5 h-3.5 animate-spin" /> Loading...
-                      </div>
-                    ) : mylarRows.length === 0 ? (
-                      <div className="flex items-center justify-center h-32 text-xs text-orange-900">No mylar data — sync from Finale first.</div>
-                    ) : (
-                      <table className="w-full text-xs">
-                        <thead className="sticky top-0 bg-black z-10">
-                          <tr className="border-b border-orange-900/30">
-                            <th className="text-left px-4 py-3 text-xs font-extrabold uppercase tracking-[0.1em] text-orange-600">Product ID</th>
-                            <th className="text-right px-4 py-3 text-xs font-extrabold uppercase tracking-[0.1em] text-orange-600">Stock QoH</th>
-                            <th className="text-right px-4 py-3 text-xs font-extrabold uppercase tracking-[0.1em] text-orange-600">Stock Available</th>
-                            <th className="text-right px-4 py-3 text-xs font-extrabold uppercase tracking-[0.1em] text-orange-600">Consumed 90d</th>
-                            <th className="text-right px-4 py-3 text-xs font-extrabold uppercase tracking-[0.1em] text-orange-600">Monthly Required</th>
-                            <th className="text-right px-4 py-3 text-xs font-extrabold uppercase tracking-[0.1em] text-orange-600">Mo On Hand</th>
-                            <th className="text-right px-4 py-3 text-xs font-extrabold uppercase tracking-[0.1em] text-orange-600">Mo On Hand (Total)</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-orange-900/20">
-                          {(wohSearch ? mylarRows.filter(r => r.product_id.toLowerCase().includes(wohSearch.toLowerCase()) || (r.product_name || '').toLowerCase().includes(wohSearch.toLowerCase())) : mylarRows).map(row => {
-                            const monthlyRequired = row.consumed_90d != null && row.consumed_90d > 0
-                              ? row.consumed_90d / 3
-                              : null
-                            const wohQoh = monthlyRequired != null && row.qoh > 0
-                              ? (row.qoh / monthlyRequired)
-                              : null
-                            const wohAvailable = monthlyRequired != null && row.available > 0
-                              ? (row.available / monthlyRequired)
-                              : null
-                            return (
-                              <tr key={row.product_id} className="hover:bg-orange-500/5 transition-colors">
-                                <td className="px-4 py-2.5">
-                                  <div className="font-mono font-semibold text-orange-300">{row.product_id}</div>
-                                  {row.product_name && <div className="text-xs text-orange-800 truncate max-w-[200px]">{row.product_name}</div>}
-                                </td>
-                                <td className="px-4 py-2.5 text-right text-sm font-mono tabular-nums text-white font-bold">{row.qoh.toLocaleString()}</td>
-                                <td className="px-4 py-2.5 text-right text-sm font-mono tabular-nums text-emerald-400">{row.available.toLocaleString()}</td>
-                                <td className="px-4 py-2.5 text-right text-sm font-mono tabular-nums text-amber-400">
-                                  {row.consumed_90d != null ? Math.round(row.consumed_90d).toLocaleString() : '—'}
-                                </td>
-                                <td className="px-4 py-2.5 text-right text-sm font-mono tabular-nums text-orange-300">
-                                  {monthlyRequired != null ? Math.round(monthlyRequired).toLocaleString() : '—'}
-                                </td>
-                                <td className="px-4 py-2.5 text-right text-sm font-mono tabular-nums text-sky-400">
-                                  {wohQoh != null ? wohQoh.toFixed(1) : '—'}
-                                </td>
-                                <td className="px-4 py-2.5 text-right text-sm font-mono tabular-nums text-sky-300">
-                                  {wohAvailable != null ? wohAvailable.toFixed(1) : '—'}
-                                </td>
-                              </tr>
-                            )
-                          })}
-                        </tbody>
-                      </table>
-                    )}
+                    <WohTable rows={mylarRows} loading={mylarLoading} search={wohSearch} emptyMessage="No mylar data — sync from Finale first." />
                   </div>
                 </>
               ) : wohTab === 'tube' ? (
                 <>
-                  <div className="px-6 py-3 border-b border-orange-900/30 flex items-center gap-3">
-                    <span className="text-xs font-bold uppercase tracking-widest text-orange-500">Tube</span>
-                    {!tubeLoading && <span className="text-[10px] text-orange-800">{tubeRows.length} SKUs</span>}
+                  <div className="px-6 py-3 border-b border-white/10 flex items-center gap-3">
+                    <span className="text-sm font-bold uppercase tracking-widest text-white/80">Tube</span>
+                    {!tubeLoading && <span className="text-xs text-white/30">{tubeRows.length} SKUs</span>}
                   </div>
                   <div className="flex-1 overflow-auto">
-                    {tubeLoading ? (
-                      <div className="flex items-center justify-center h-32 gap-2 text-orange-800 text-xs">
-                        <RefreshCw className="w-3.5 h-3.5 animate-spin" /> Loading...
-                      </div>
-                    ) : tubeRows.length === 0 ? (
-                      <div className="flex items-center justify-center h-32 text-xs text-orange-900">No tube data — sync from Finale first.</div>
-                    ) : (
-                      <table className="w-full text-xs">
-                        <thead className="sticky top-0 bg-black z-10">
-                          <tr className="border-b border-orange-900/30">
-                            <th className="text-left px-4 py-3 text-xs font-extrabold uppercase tracking-[0.1em] text-orange-600">Product ID</th>
-                            <th className="text-right px-4 py-3 text-xs font-extrabold uppercase tracking-[0.1em] text-orange-600">Stock QoH</th>
-                            <th className="text-right px-4 py-3 text-xs font-extrabold uppercase tracking-[0.1em] text-orange-600">Stock Available</th>
-                            <th className="text-right px-4 py-3 text-xs font-extrabold uppercase tracking-[0.1em] text-orange-600">Consumed 90d</th>
-                            <th className="text-right px-4 py-3 text-xs font-extrabold uppercase tracking-[0.1em] text-orange-600">Monthly Required</th>
-                            <th className="text-right px-4 py-3 text-xs font-extrabold uppercase tracking-[0.1em] text-orange-600">Mo On Hand</th>
-                            <th className="text-right px-4 py-3 text-xs font-extrabold uppercase tracking-[0.1em] text-orange-600">Mo On Hand (Total)</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-orange-900/20">
-                          {(wohSearch ? tubeRows.filter(r => r.product_id.toLowerCase().includes(wohSearch.toLowerCase()) || (r.product_name || '').toLowerCase().includes(wohSearch.toLowerCase())) : tubeRows).map(row => {
-                            const monthlyRequired = row.consumed_90d != null && row.consumed_90d > 0
-                              ? row.consumed_90d / 3
-                              : null
-                            const wohQoh = monthlyRequired != null && row.qoh > 0
-                              ? (row.qoh / monthlyRequired)
-                              : null
-                            const wohAvailable = monthlyRequired != null && row.available > 0
-                              ? (row.available / monthlyRequired)
-                              : null
-                            return (
-                              <tr key={row.product_id} className="hover:bg-orange-500/5 transition-colors">
-                                <td className="px-4 py-2.5">
-                                  <div className="font-mono font-semibold text-orange-300">{row.product_id}</div>
-                                  {row.product_name && <div className="text-xs text-orange-800 truncate max-w-[200px]">{row.product_name}</div>}
-                                </td>
-                                <td className="px-4 py-2.5 text-right text-sm font-mono tabular-nums text-white font-bold">{row.qoh.toLocaleString()}</td>
-                                <td className="px-4 py-2.5 text-right text-sm font-mono tabular-nums text-emerald-400">{row.available.toLocaleString()}</td>
-                                <td className="px-4 py-2.5 text-right text-sm font-mono tabular-nums text-amber-400">
-                                  {row.consumed_90d != null ? Math.round(row.consumed_90d).toLocaleString() : '—'}
-                                </td>
-                                <td className="px-4 py-2.5 text-right text-sm font-mono tabular-nums text-orange-300">
-                                  {monthlyRequired != null ? Math.round(monthlyRequired).toLocaleString() : '—'}
-                                </td>
-                                <td className="px-4 py-2.5 text-right text-sm font-mono tabular-nums text-sky-400">
-                                  {wohQoh != null ? wohQoh.toFixed(1) : '—'}
-                                </td>
-                                <td className="px-4 py-2.5 text-right text-sm font-mono tabular-nums text-sky-300">
-                                  {wohAvailable != null ? wohAvailable.toFixed(1) : '—'}
-                                </td>
-                              </tr>
-                            )
-                          })}
-                        </tbody>
-                      </table>
-                    )}
+                    <WohTable rows={tubeRows} loading={tubeLoading} search={wohSearch} emptyMessage="No tube data — sync from Finale first." />
                   </div>
                 </>
               ) : wohTab === 'cone' ? (
                 <>
-                  <div className="px-6 py-3 border-b border-orange-900/30 flex items-center gap-3">
-                    <span className="text-xs font-bold uppercase tracking-widest text-orange-500">Cone</span>
-                    {!coneLoading && <span className="text-[10px] text-orange-800">{coneRows.length} SKUs</span>}
+                  <div className="px-6 py-3 border-b border-white/10 flex items-center gap-3">
+                    <span className="text-sm font-bold uppercase tracking-widest text-white/80">Cone</span>
+                    {!coneLoading && <span className="text-xs text-white/30">{coneRows.length} SKUs</span>}
                   </div>
                   <div className="flex-1 overflow-auto">
-                    {coneLoading ? (
-                      <div className="flex items-center justify-center h-32 gap-2 text-orange-800 text-xs">
-                        <RefreshCw className="w-3.5 h-3.5 animate-spin" /> Loading...
-                      </div>
-                    ) : coneRows.length === 0 ? (
-                      <div className="flex items-center justify-center h-32 text-xs text-orange-900">No cone data — sync from Finale first.</div>
-                    ) : (
-                      <table className="w-full text-xs">
-                        <thead className="sticky top-0 bg-black z-10">
-                          <tr className="border-b border-orange-900/30">
-                            <th className="text-left px-4 py-3 text-xs font-extrabold uppercase tracking-[0.1em] text-orange-600">Product ID</th>
-                            <th className="text-right px-4 py-3 text-xs font-extrabold uppercase tracking-[0.1em] text-orange-600">Stock QoH</th>
-                            <th className="text-right px-4 py-3 text-xs font-extrabold uppercase tracking-[0.1em] text-orange-600">Stock Available</th>
-                            <th className="text-right px-4 py-3 text-xs font-extrabold uppercase tracking-[0.1em] text-orange-600">Consumed 90d</th>
-                            <th className="text-right px-4 py-3 text-xs font-extrabold uppercase tracking-[0.1em] text-orange-600">Monthly Required</th>
-                            <th className="text-right px-4 py-3 text-xs font-extrabold uppercase tracking-[0.1em] text-orange-600">Mo On Hand</th>
-                            <th className="text-right px-4 py-3 text-xs font-extrabold uppercase tracking-[0.1em] text-orange-600">Mo On Hand (Total)</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-orange-900/20">
-                          {(wohSearch ? coneRows.filter(r => r.product_id.toLowerCase().includes(wohSearch.toLowerCase()) || (r.product_name || '').toLowerCase().includes(wohSearch.toLowerCase())) : coneRows).map(row => {
-                            const monthlyRequired = row.consumed_90d != null && row.consumed_90d > 0
-                              ? row.consumed_90d / 3
-                              : null
-                            const wohQoh = monthlyRequired != null && row.qoh > 0
-                              ? (row.qoh / monthlyRequired)
-                              : null
-                            const wohAvailable = monthlyRequired != null && row.available > 0
-                              ? (row.available / monthlyRequired)
-                              : null
-                            return (
-                              <tr key={row.product_id} className="hover:bg-orange-500/5 transition-colors">
-                                <td className="px-4 py-2.5">
-                                  <div className="font-mono font-semibold text-orange-300">{row.product_id}</div>
-                                  {row.product_name && <div className="text-xs text-orange-800 truncate max-w-[200px]">{row.product_name}</div>}
-                                </td>
-                                <td className="px-4 py-2.5 text-right text-sm font-mono tabular-nums text-white font-bold">{row.qoh.toLocaleString()}</td>
-                                <td className="px-4 py-2.5 text-right text-sm font-mono tabular-nums text-emerald-400">{row.available.toLocaleString()}</td>
-                                <td className="px-4 py-2.5 text-right text-sm font-mono tabular-nums text-amber-400">
-                                  {row.consumed_90d != null ? Math.round(row.consumed_90d).toLocaleString() : '—'}
-                                </td>
-                                <td className="px-4 py-2.5 text-right text-sm font-mono tabular-nums text-orange-300">
-                                  {monthlyRequired != null ? Math.round(monthlyRequired).toLocaleString() : '—'}
-                                </td>
-                                <td className="px-4 py-2.5 text-right text-sm font-mono tabular-nums text-sky-400">
-                                  {wohQoh != null ? wohQoh.toFixed(1) : '—'}
-                                </td>
-                                <td className="px-4 py-2.5 text-right text-sm font-mono tabular-nums text-sky-300">
-                                  {wohAvailable != null ? wohAvailable.toFixed(1) : '—'}
-                                </td>
-                              </tr>
-                            )
-                          })}
-                        </tbody>
-                      </table>
-                    )}
+                    <WohTable rows={coneRows} loading={coneLoading} search={wohSearch} emptyMessage="No cone data — sync from Finale first." />
                   </div>
                 </>
               ) : wohTab === 'label' ? (
                 <>
-                  <div className="px-6 py-3 border-b border-orange-900/30 flex items-center gap-3">
-                    <span className="text-xs font-bold uppercase tracking-widest text-orange-500">Label</span>
-                    {!labelLoading && <span className="text-[10px] text-orange-800">{labelRows.length} SKUs</span>}
+                  <div className="px-6 py-3 border-b border-white/10 flex items-center gap-3">
+                    <span className="text-sm font-bold uppercase tracking-widest text-white/80">Label</span>
+                    {!labelLoading && <span className="text-xs text-white/30">{labelRows.length} SKUs</span>}
                   </div>
                   <div className="flex-1 overflow-auto">
-                    {labelLoading ? (
-                      <div className="flex items-center justify-center h-32 gap-2 text-orange-800 text-xs">
-                        <RefreshCw className="w-4 h-4 animate-spin" /> Loading...
-                      </div>
-                    ) : labelRows.length === 0 ? (
-                      <div className="flex items-center justify-center h-32 text-xs text-orange-900">No label data — upload a Finale stock CSV first.</div>
-                    ) : (
-                      <table className="w-full text-xs">
-                        <thead className="sticky top-0 bg-black z-10">
-                          <tr className="border-b border-orange-900/30">
-                            <th className="text-left px-4 py-3 text-xs font-extrabold uppercase tracking-[0.1em] text-orange-600">Product ID</th>
-                            <th className="text-right px-4 py-3 text-xs font-extrabold uppercase tracking-[0.1em] text-orange-600">Stock QoH</th>
-                            <th className="text-right px-4 py-3 text-xs font-extrabold uppercase tracking-[0.1em] text-orange-600">Stock Available</th>
-                            <th className="text-right px-4 py-3 text-xs font-extrabold uppercase tracking-[0.1em] text-orange-600">Consumed 90d</th>
-                            <th className="text-right px-4 py-3 text-xs font-extrabold uppercase tracking-[0.1em] text-orange-600">Monthly Required</th>
-                            <th className="text-right px-4 py-3 text-xs font-extrabold uppercase tracking-[0.1em] text-orange-600">Mo On Hand</th>
-                            <th className="text-right px-4 py-3 text-xs font-extrabold uppercase tracking-[0.1em] text-orange-600">Mo On Hand (Total)</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-orange-900/20">
-                          {(wohSearch ? labelRows.filter(r => r.product_id.toLowerCase().includes(wohSearch.toLowerCase()) || (r.product_name || '').toLowerCase().includes(wohSearch.toLowerCase())) : labelRows).map(row => {
-                            const monthlyRequired = row.consumed_90d != null && row.consumed_90d > 0 ? row.consumed_90d / 3 : null
-                            const wohQoh = monthlyRequired != null && row.qoh > 0 ? (row.qoh / monthlyRequired) : null
-                            const wohAvailable = monthlyRequired != null && row.available > 0 ? (row.available / monthlyRequired) : null
-                            return (
-                              <tr key={row.product_id} className="hover:bg-orange-500/5 transition-colors">
-                                <td className="px-4 py-2.5">
-                                  <div className="font-mono font-semibold text-orange-300">{row.product_id}</div>
-                                  {row.product_name && <div className="text-xs text-orange-800 truncate max-w-[200px]">{row.product_name}</div>}
-                                </td>
-                                <td className="px-4 py-2.5 text-right text-sm font-mono tabular-nums text-white font-bold">{row.qoh.toLocaleString()}</td>
-                                <td className="px-4 py-2.5 text-right text-sm font-mono tabular-nums text-emerald-400">{row.available.toLocaleString()}</td>
-                                <td className="px-4 py-2.5 text-right text-sm font-mono tabular-nums text-amber-400">
-                                  {row.consumed_90d != null ? Math.round(row.consumed_90d).toLocaleString() : '—'}
-                                </td>
-                                <td className="px-4 py-2.5 text-right text-sm font-mono tabular-nums text-orange-300">
-                                  {monthlyRequired != null ? Math.round(monthlyRequired).toLocaleString() : '—'}
-                                </td>
-                                <td className="px-4 py-2.5 text-right text-sm font-mono tabular-nums text-sky-400">
-                                  {wohQoh != null ? wohQoh.toFixed(1) : '—'}
-                                </td>
-                                <td className="px-4 py-2.5 text-right text-sm font-mono tabular-nums text-sky-300">
-                                  {wohAvailable != null ? wohAvailable.toFixed(1) : '—'}
-                                </td>
-                              </tr>
-                            )
-                          })}
-                        </tbody>
-                      </table>
-                    )}
+                    <WohTable rows={labelRows} loading={labelLoading} search={wohSearch} emptyMessage="No label data — sync from Finale first." />
                   </div>
                 </>
               ) : wohTab === 'grinder' ? (
                 <>
-                  <div className="px-6 py-3 border-b border-orange-900/30 flex items-center gap-3">
-                    <span className="text-xs font-bold uppercase tracking-widest text-orange-500">Grinder</span>
-                    {!grinderLoading && <span className="text-[10px] text-orange-800">{grinderRows.length} SKUs</span>}
+                  <div className="px-6 py-3 border-b border-white/10 flex items-center gap-3">
+                    <span className="text-sm font-bold uppercase tracking-widest text-white/80">Grinder</span>
+                    {!grinderLoading && <span className="text-xs text-white/30">{grinderRows.length} SKUs</span>}
                   </div>
                   <div className="flex-1 overflow-auto">
-                    {grinderLoading ? (
-                      <div className="flex items-center justify-center h-32 gap-2 text-orange-800 text-xs">
-                        <RefreshCw className="w-4 h-4 animate-spin" /> Loading...
-                      </div>
-                    ) : grinderRows.length === 0 ? (
-                      <div className="flex items-center justify-center h-32 text-xs text-orange-900">No grinder data — upload a Finale stock CSV first.</div>
-                    ) : (
-                      <table className="w-full text-xs">
-                        <thead className="sticky top-0 bg-black z-10">
-                          <tr className="border-b border-orange-900/30">
-                            <th className="text-left px-4 py-3 text-xs font-extrabold uppercase tracking-[0.1em] text-orange-600">Product ID</th>
-                            <th className="text-right px-4 py-3 text-xs font-extrabold uppercase tracking-[0.1em] text-orange-600">Stock QoH</th>
-                            <th className="text-right px-4 py-3 text-xs font-extrabold uppercase tracking-[0.1em] text-orange-600">Stock Available</th>
-                            <th className="text-right px-4 py-3 text-xs font-extrabold uppercase tracking-[0.1em] text-orange-600">Consumed 90d</th>
-                            <th className="text-right px-4 py-3 text-xs font-extrabold uppercase tracking-[0.1em] text-orange-600">Monthly Required</th>
-                            <th className="text-right px-4 py-3 text-xs font-extrabold uppercase tracking-[0.1em] text-orange-600">Mo On Hand</th>
-                            <th className="text-right px-4 py-3 text-xs font-extrabold uppercase tracking-[0.1em] text-orange-600">Mo On Hand (Total)</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-orange-900/20">
-                          {(wohSearch ? grinderRows.filter(r => r.product_id.toLowerCase().includes(wohSearch.toLowerCase()) || (r.product_name || '').toLowerCase().includes(wohSearch.toLowerCase())) : grinderRows).map(row => {
-                            const monthlyRequired = row.consumed_90d != null && row.consumed_90d > 0 ? row.consumed_90d / 3 : null
-                            const wohQoh = monthlyRequired != null && row.qoh > 0 ? (row.qoh / monthlyRequired) : null
-                            const wohAvailable = monthlyRequired != null && row.available > 0 ? (row.available / monthlyRequired) : null
-                            return (
-                              <tr key={row.product_id} className="hover:bg-orange-500/5 transition-colors">
-                                <td className="px-4 py-2.5">
-                                  <div className="font-mono font-semibold text-orange-300">{row.product_id}</div>
-                                  {row.product_name && <div className="text-xs text-orange-800 truncate max-w-[200px]">{row.product_name}</div>}
-                                </td>
-                                <td className="px-4 py-2.5 text-right text-sm font-mono tabular-nums text-white font-bold">{row.qoh.toLocaleString()}</td>
-                                <td className="px-4 py-2.5 text-right text-sm font-mono tabular-nums text-emerald-400">{row.available.toLocaleString()}</td>
-                                <td className="px-4 py-2.5 text-right text-sm font-mono tabular-nums text-amber-400">
-                                  {row.consumed_90d != null ? Math.round(row.consumed_90d).toLocaleString() : '—'}
-                                </td>
-                                <td className="px-4 py-2.5 text-right text-sm font-mono tabular-nums text-orange-300">
-                                  {monthlyRequired != null ? Math.round(monthlyRequired).toLocaleString() : '—'}
-                                </td>
-                                <td className="px-4 py-2.5 text-right text-sm font-mono tabular-nums text-sky-400">
-                                  {wohQoh != null ? wohQoh.toFixed(1) : '—'}
-                                </td>
-                                <td className="px-4 py-2.5 text-right text-sm font-mono tabular-nums text-sky-300">
-                                  {wohAvailable != null ? wohAvailable.toFixed(1) : '—'}
-                                </td>
-                              </tr>
-                            )
-                          })}
-                        </tbody>
-                      </table>
-                    )}
+                    <WohTable rows={grinderRows} loading={grinderLoading} search={wohSearch} emptyMessage="No grinder data — sync from Finale first." />
                   </div>
                 </>
               ) : wohTab === 'lab' ? (
                 <>
-                  <div className="px-6 py-3 border-b border-orange-900/30 flex items-center gap-3">
-                    <span className="text-xs font-bold uppercase tracking-widest text-orange-500">Lab</span>
-                    {!labLoading && <span className="text-[10px] text-orange-800">{labRows.length} SKUs</span>}
+                  <div className="px-6 py-3 border-b border-white/10 flex items-center gap-3">
+                    <span className="text-sm font-bold uppercase tracking-widest text-white/80">Lab</span>
+                    {!labLoading && <span className="text-xs text-white/30">{labRows.length} SKUs</span>}
                   </div>
                   <div className="flex-1 overflow-auto">
-                    {labLoading ? (
-                      <div className="flex items-center justify-center h-32 gap-2 text-orange-800 text-xs">
-                        <RefreshCw className="w-4 h-4 animate-spin" /> Loading...
-                      </div>
-                    ) : labRows.length === 0 ? (
-                      <div className="flex items-center justify-center h-32 text-xs text-orange-900">No lab data — upload a Finale stock CSV first.</div>
-                    ) : (
-                      <table className="w-full text-xs">
-                        <thead className="sticky top-0 bg-black border-b border-orange-900/30">
-                          <tr>
-                            <th className="text-left px-4 py-3 text-xs font-extrabold uppercase tracking-[0.1em] text-orange-600">Product ID</th>
-                            <th className="text-right px-4 py-3 text-xs font-extrabold uppercase tracking-[0.1em] text-orange-600">Stock QoH</th>
-                            <th className="text-right px-4 py-3 text-xs font-extrabold uppercase tracking-[0.1em] text-orange-600">Stock Available</th>
-                            <th className="text-right px-4 py-3 text-xs font-extrabold uppercase tracking-[0.1em] text-orange-600">Consumed 90d</th>
-                            <th className="text-right px-4 py-3 text-xs font-extrabold uppercase tracking-[0.1em] text-orange-600">Monthly Required</th>
-                            <th className="text-right px-4 py-3 text-xs font-extrabold uppercase tracking-[0.1em] text-orange-600">Mo On Hand (QoH)</th>
-                            <th className="text-right px-4 py-3 text-xs font-extrabold uppercase tracking-[0.1em] text-orange-600">Mo On Hand (Avail)</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-orange-900/20">
-                          {(wohSearch ? labRows.filter(r => r.product_id.toLowerCase().includes(wohSearch.toLowerCase()) || (r.product_name || '').toLowerCase().includes(wohSearch.toLowerCase())) : labRows).map(row => {
-                            const monthlyRequired = row.consumed_90d != null && row.consumed_90d > 0 ? row.consumed_90d / 3 : null
-                            const wohQoh = monthlyRequired != null && row.qoh > 0 ? (row.qoh / monthlyRequired) : null
-                            const wohAvailable = monthlyRequired != null && row.available > 0 ? (row.available / monthlyRequired) : null
-                            return (
-                              <tr key={row.product_id} className="hover:bg-orange-500/5 transition-colors">
-                                <td className="px-4 py-2.5 text-orange-200">
-                                  <div className="font-mono">{row.product_id}</div>
-                                  {row.product_name && <div className="text-orange-800 text-[10px]">{row.product_name}</div>}
-                                </td>
-                                <td className="px-4 py-2.5 text-right text-sm font-mono tabular-nums text-white font-bold">{row.qoh.toLocaleString()}</td>
-                                <td className="px-4 py-2.5 text-right text-sm font-mono tabular-nums text-emerald-400">{row.available.toLocaleString()}</td>
-                                <td className="px-4 py-2.5 text-right text-sm font-mono tabular-nums text-amber-400">
-                                  {row.consumed_90d != null ? Math.round(row.consumed_90d).toLocaleString() : '—'}
-                                </td>
-                                <td className="px-4 py-2.5 text-right text-sm font-mono tabular-nums text-orange-300">
-                                  {monthlyRequired != null ? Math.round(monthlyRequired).toLocaleString() : '—'}
-                                </td>
-                                <td className="px-4 py-2.5 text-right text-sm font-mono tabular-nums text-sky-400">
-                                  {wohQoh != null ? wohQoh.toFixed(1) : '—'}
-                                </td>
-                                <td className="px-4 py-2.5 text-right text-sm font-mono tabular-nums text-sky-300">
-                                  {wohAvailable != null ? wohAvailable.toFixed(1) : '—'}
-                                </td>
-                              </tr>
-                            )
-                          })}
-                        </tbody>
-                      </table>
-                    )}
+                    <WohTable rows={labRows} loading={labLoading} search={wohSearch} emptyMessage="No lab data — sync from Finale first." />
+                  </div>
+                </>
+              ) : wohTab === 'marketing' ? (
+                <>
+                  <div className="px-6 py-3 border-b border-white/10 flex items-center gap-3">
+                    <span className="text-sm font-bold uppercase tracking-widest text-white/80">Marketing</span>
+                    {!marketingLoading && <span className="text-xs text-white/30">{marketingRows.length} SKUs</span>}
+                  </div>
+                  <div className="flex-1 overflow-auto">
+                    <WohTable rows={marketingRows} loading={marketingLoading} search={wohSearch} showSale useSaleForMonthly emptyMessage="No marketing data — sync from Finale first." />
+                  </div>
+                </>
+              ) : wohTab === 'insert' ? (
+                <>
+                  <div className="px-6 py-3 border-b border-white/10 flex items-center gap-3">
+                    <span className="text-sm font-bold uppercase tracking-widest text-white/80">Insert</span>
+                    {!insertLoading && <span className="text-xs text-white/30">{insertRows.length} SKUs</span>}
+                  </div>
+                  <div className="flex-1 overflow-auto">
+                    <WohTable rows={insertRows} loading={insertLoading} search={wohSearch} emptyMessage="No insert data — sync from Finale first." />
                   </div>
                 </>
               ) : (
@@ -888,6 +576,7 @@ export default function Dashboard() {
               )}
             </div>
           </div>
+          )}
         </div>
       )}
 
@@ -899,6 +588,7 @@ export default function Dashboard() {
       {showSheets && <SheetsPanel onClose={() => setShowSheets(false)} onVariancesFound={() => refresh()} />}
       {showSettings && <SettingsPanel onClose={() => setShowSettings(false)} />}
       {showCycleCount && <CycleCountPanel onClose={() => setShowCycleCount(false)} />}
+      </div>
     </div>
   )
 }
