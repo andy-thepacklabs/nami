@@ -81,11 +81,16 @@ export async function GET(req: Request) {
   if (url.searchParams.get('inspect') === 'sublocation') {
     try {
       const res = await finaleGet('sublocation')
-      const data = res.data as Record<string, unknown[]>
-      const keys = Object.keys(data)
-      const sample: Record<string, unknown> = {}
-      for (const k of keys) sample[k] = (data[k] || []).slice(0, 5)
-      return NextResponse.json({ status: res.status, keys, sample })
+      const data = res.data
+      if (Array.isArray(data)) {
+        return NextResponse.json({ status: res.status, format: 'array', count: data.length, sample: data.slice(0, 3) })
+      } else if (data && typeof data === 'object') {
+        const keys = Object.keys(data as object)
+        const sample: Record<string, unknown> = {}
+        for (const k of keys) sample[k] = ((data as Record<string, unknown[]>)[k] || []).slice(0, 3)
+        return NextResponse.json({ status: res.status, format: 'object', keys, sample })
+      }
+      return NextResponse.json({ status: res.status, format: 'unknown', data })
     } catch (err) {
       return NextResponse.json({ error: String(err) }, { status: 500 })
     }
