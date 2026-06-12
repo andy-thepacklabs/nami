@@ -356,13 +356,21 @@ async function doSync(): Promise<ReturnType<typeof NextResponse.json>> {
         const cat       = (p.category || '').trim()
         const available = parseFloat(String(p.stockAvailableToPromiseUnits ?? '0').replace(/,/g, '')) || 0
         if (!pid) continue
-        if (hasSublocs && p.stockSublocationSummary) {
-          const bins = parseSublocationSummary(p.stockSublocationSummary)
-            .filter(b => filterBin(b.bin))
+        if (hasSublocs) {
+          // When whitelist is active, only store bins that pass the filter
+          const bins = p.stockSublocationSummary
+            ? parseSublocationSummary(p.stockSublocationSummary).filter(b => filterBin(b.bin))
+            : []
           if (bins.length > 0) {
             for (const { bin, qty } of bins) { ins.run(pid, bin, name, cat, qty, available); imported++ }
-            continue
+          } else if (activeBins.size === 0) {
+            // No whitelist loaded — store product total as fallback
+            const qoh = parseFloat(String(p.unitsInStock ?? '0')) || 0
+            ins.run(pid, '', name, cat, qoh, available)
+            imported++
           }
+          // If whitelist active but no matching bins — skip this product entirely
+          continue
         }
         const qoh = parseFloat(String(p.unitsInStock ?? '0')) || 0
         ins.run(pid, '', name, cat, qoh, available)
