@@ -17,28 +17,17 @@ export async function GET() {
       SELECT s.product_id, s.product_name,
              SUM(s.qoh) as qoh,
              MAX(s.available) as available,
-             c.quantity as consumed_90d
+             c.quantity as consumed_90d,
+             sv.sales_90d
       FROM finale_stock_csv s
       LEFT JOIN finale_consumed_90d c ON c.product_id = s.product_id
-      WHERE (s.product_id LIKE 'LAB%' AND s.product_id NOT LIKE 'LABEL%')
-         OR s.product_id LIKE 'TRP-%'
-         OR s.product_id IN (
-           'Oil - D9THCP',
-           'Oil - KCA D8',
-           'Oil - HHC',
-           'ISO - CBN',
-           'OIL-CBD-BRD',
-           'OIL-CBD-FSP',
-           'Oil - Amber D8',
-           'Oil - D9',
-           'ISO - CBD',
-           'ISO - CBG',
-           'OIL-C3HTE',
-           'Oil - THCA Distillate'
-         )
+      LEFT JOIN finale_sales_csv sv ON sv.product_id = s.product_id
+      WHERE s.product_id LIKE 'MKT-%'
+         OR s.product_id LIKE 'IM-%'
+         OR s.product_id LIKE 'mm-%'
       GROUP BY s.product_id
       ORDER BY s.product_id
-    `).all() as { product_id: string; product_name: string | null; qoh: number; available: number; consumed_90d: number | null }[]
+    `).all() as { product_id: string; product_name: string | null; qoh: number; available: number; consumed_90d: number | null; sales_90d: number | null }[]
     return NextResponse.json({ rows })
   } catch {
     return NextResponse.json({ rows: [], error: 'Finale data not synced yet.' })

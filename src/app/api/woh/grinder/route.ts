@@ -24,6 +24,7 @@ export async function GET() {
          OR s.product_id = 'ISO - THCA'
          OR s.product_id = 'Flower - CBD Flower'
          OR s.product_id = 'Flower - Raw THCA Smalls'
+         OR s.product_id = 'Mixture - Flower Mixture'
       GROUP BY s.product_id
       ORDER BY s.product_id
     `).all() as { product_id: string; product_name: string | null; qoh: number; available: number; consumed_90d: number | null }[]

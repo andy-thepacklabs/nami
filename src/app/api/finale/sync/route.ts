@@ -72,31 +72,32 @@ function parseSublocationSummary(summary: string | null | undefined): Array<{ bi
 }
 
 // GET: introspect Finale GraphQL product type fields
-export async function GET() {
+export async function GET(req: Request) {
   const { account } = getCredentials()
   if (!account) return NextResponse.json({ error: 'No credentials' }, { status: 400 })
 
-  // GraphQL introspection — list all fields on the product type
-  const introspectQuery = `{
-    __type(name: "product") {
-      fields { name type { name kind ofType { name kind } } }
+  const url = new URL(req.url)
+  // ?inspect=salesorder — return raw field keys + first order's keys
+  if (url.searchParams.get('inspect') === 'salesorder') {
+    try {
+      const typeNames = ['invoiceItem', 'orderItem', 'productViewConnectionSummaryMetric', 'invoiceItemViewConnectionSummaryMetric', 'orderItemViewConnectionSummaryMetric', 'product']
+      const result: Record<string, string[]> = {}
+      for (const t of typeNames) {
+        const r = await finaleGraphQL(`{ __type(name: "${t}") { fields { name } } }`) as { data?: { __type?: { fields: Array<{ name: string }> } } }
+        result[t] = r.data?.__type?.fields?.map(f => f.name) ?? []
+      }
+      return NextResponse.json(result)
+    } catch (err) {
+      return NextResponse.json({ error: String(err) }, { status: 500 })
     }
-  }`
+  }
+
+  // Default: GraphQL introspection
   try {
+    const introspectQuery = `{ __type(name: "product") { fields { name } } }`
     const result = await finaleGraphQL(introspectQuery) as { data?: { __type?: { fields: Array<{ name: string }> } } }
     const fields = result.data?.__type?.fields?.map(f => f.name) ?? []
-    // Also fetch one product sample to see live values for stock-related fields
-    const sampleQuery = `{
-      productViewConnection(first: 1) {
-        edges { node {
-          productId unitsInStock stockAvailable stockSublocationSummary
-          unitsOnOrder stockOnOrder quantityOnOrder unitsOrdered unitsIncoming
-        } }
-      }
-    }`
-    let sample: unknown = null
-    try { sample = await finaleGraphQL(sampleQuery) } catch { /* ignore unknown fields */ }
-    return NextResponse.json({ fields, sample })
+    return NextResponse.json({ fields })
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 })
   }
@@ -110,6 +111,15 @@ interface GqlProductNode {
   unitsInStock: string | number | null
   stockAvailableToPromiseUnits: string | number | null
   stockSublocationSummary: string | null
+  universalProductCode: string | null
+  averageCost: number | null
+  salesLast7Days: number | null
+  salesLast30Days: number | null
+  salesLast60Days: number | null
+  salesLast90Days: number | null
+  salesLast180Days: number | null
+  salesLastMonth: number | null
+  salesThisMonth: number | null
 }
 
 export async function POST() {
@@ -173,6 +183,7 @@ async function fetchConsumed90d(): Promise<Map<string, number>> {
   return consumed
 }
 
+
 async function doSync(): Promise<ReturnType<typeof NextResponse.json>> {
   const db = getDb()
   db.exec(`
@@ -194,6 +205,25 @@ async function doSync(): Promise<ReturnType<typeof NextResponse.json>> {
       synced_at  TEXT NOT NULL DEFAULT (datetime('now'))
     )
   `)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS finale_sales_csv (
+      product_id        TEXT PRIMARY KEY,
+      product_name      TEXT,
+      category          TEXT,
+      sales_7d          REAL,
+      sales_30d         REAL,
+      sales_60d         REAL,
+      sales_90d         REAL,
+      sales_180d        REAL,
+      sales_last_month  REAL,
+      sales_this_month  REAL,
+      qty_on_hand       REAL,
+      qty_available     REAL,
+      average_cost      REAL,
+      upc               TEXT,
+      imported_at       TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `)
   try { db.exec(`ALTER TABLE finale_stock_csv ADD COLUMN category TEXT`) } catch { /* already exists */ }
   try { db.exec(`ALTER TABLE finale_stock_csv ADD COLUMN available REAL`) } catch { /* already exists */ }
 
@@ -202,9 +232,12 @@ async function doSync(): Promise<ReturnType<typeof NextResponse.json>> {
     const allProducts: GqlProductNode[] = []
     let hasNextPage = true
     let cursor: string | null = null
-    const PAGE = 200
+    const PAGE = 500
 
     while (hasNextPage) {
+      // Throttle: Finale allows 120 calls/min. Each page = 1 call; pause between pages.
+      if (cursor) await new Promise(r => setTimeout(r, 600)) // ~100 pages/min max
+
       const afterArg = cursor ? `, after: "${cursor}"` : ''
       const query = `{
         productViewConnection(first: ${PAGE}${afterArg}) {
@@ -218,6 +251,15 @@ async function doSync(): Promise<ReturnType<typeof NextResponse.json>> {
               unitsInStock
               stockAvailableToPromiseUnits
               stockSublocationSummary
+              universalProductCode
+              averageCost
+              salesLast7Days
+              salesLast30Days
+              salesLast60Days
+              salesLast90Days
+              salesLast180Days
+              salesLastMonth
+              salesThisMonth
             }
           }
         }
@@ -322,6 +364,48 @@ async function doSync(): Promise<ReturnType<typeof NextResponse.json>> {
       }
     }
 
+    // Store sales data from GraphQL product nodes
+    let salesSynced = 0
+    {
+      const insSales = db.prepare(`
+        INSERT OR REPLACE INTO finale_sales_csv
+          (product_id, product_name, category, sales_7d, sales_30d, sales_60d, sales_90d,
+           sales_180d, sales_last_month, sales_this_month, qty_on_hand, qty_available,
+           average_cost, upc, imported_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+      `)
+      db.prepare('DELETE FROM finale_sales_csv').run()
+      db.exec('BEGIN')
+      try {
+        for (const p of activeProducts) {
+          const pid = (p.productId || '').trim()
+          if (!pid) continue
+          insSales.run(
+            pid,
+            (p.description || '').trim() || null,
+            (p.category || '').trim() || null,
+            p.salesLast7Days ?? null,
+            p.salesLast30Days ?? null,
+            p.salesLast60Days ?? null,
+            p.salesLast90Days ?? null,
+            p.salesLast180Days ?? null,
+            p.salesLastMonth ?? null,
+            p.salesThisMonth ?? null,
+            parseFloat(String(p.unitsInStock ?? '0')) || null,
+            parseFloat(String(p.stockAvailableToPromiseUnits ?? '0')) || null,
+            p.averageCost ?? null,
+            p.universalProductCode ?? null,
+          )
+          salesSynced++
+        }
+        db.exec('COMMIT')
+      } catch (e) {
+        db.exec('ROLLBACK')
+        console.warn('[sync] Failed to save sales data:', e)
+        salesSynced = 0
+      }
+    }
+
     return NextResponse.json({
       ok: true,
       source: 'graphql',
@@ -329,7 +413,8 @@ async function doSync(): Promise<ReturnType<typeof NextResponse.json>> {
       imported,
       skipped,
       consumed: consumed.size,
-      note: hasSublocs ? `QoH & sublocations synced from Finale ✓` : `QoH synced ✓ — no sublocation data in Finale`,
+      salesSynced,
+      note: hasSublocs ? `QoH & sublocations synced ✓` : `QoH synced ✓ — no sublocation data`,
     })
 
   } catch (gqlErr) {

@@ -12,6 +12,12 @@ interface StockRow {
   qoh: number
   available: number | null
   consumed_90d: number | null
+  sales_7d: number | null
+  sales_30d: number | null
+  sales_60d: number | null
+  sales_90d: number | null
+  sales_this_month: number | null
+  sales_last_month: number | null
 }
 
 interface ReportData {
@@ -36,7 +42,7 @@ export default function FinaleReportPanel({ onClose: _ }: { onClose: () => void 
   const [uploadingStock, setUploadingStock] = useState(false)
   const [uploadError, setUploadError] = useState('')
   const [syncing, setSyncing] = useState(false)
-  const [syncResult, setSyncResult] = useState<{ ok?: boolean; source?: string; imported?: number; products?: number; skipped?: number; note?: string; error?: string; bins?: number } | null>(null)
+  const [syncResult, setSyncResult] = useState<{ ok?: boolean; source?: string; imported?: number; products?: number; skipped?: number; note?: string; error?: string; bins?: number; salesSynced?: number } | null>(null)
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const load = useCallback(async (p = page, s = debouncedSearch) => {
@@ -73,7 +79,7 @@ export default function FinaleReportPanel({ onClose: _ }: { onClose: () => void 
       const res = await fetch('/api/finale/sync', { method: 'POST' })
       const result = await res.json()
       setSyncResult(result)
-      if (!result.error) { setPage(1); await load(1, debouncedSearch) }
+      if (!result.error) { setPage(1); await load(1, debouncedSearch); window.dispatchEvent(new Event('finale-synced')) }
     } catch (err) {
       setSyncResult({ error: (err as Error).message })
     }
@@ -88,7 +94,7 @@ export default function FinaleReportPanel({ onClose: _ }: { onClose: () => void 
       form.append('file', file)
       const res = await fetch('/api/finale/import-stock-csv', { method: 'POST', body: form })
       const result = await res.json()
-      if (result.error) { setUploadError(result.error) } else { setPage(1); await load(1, debouncedSearch) }
+      if (result.error) { setUploadError(result.error) } else { setPage(1); await load(1, debouncedSearch); window.dispatchEvent(new Event('finale-synced')) }
     } catch (err) {
       setUploadError((err as Error).message)
     }
@@ -105,7 +111,7 @@ export default function FinaleReportPanel({ onClose: _ }: { onClose: () => void 
           <FileSpreadsheet className="w-4 h-4 text-orange-500" />
           <span className="text-sm font-bold text-white uppercase tracking-wide">Finale Report</span>
           {data?.importedAt && (
-            <span className="text-[10px] text-orange-700">
+            <span className="text-[10px] text-white/40">
               Last import: {new Date(data.importedAt).toLocaleDateString()}
             </span>
           )}
@@ -154,6 +160,7 @@ export default function FinaleReportPanel({ onClose: _ }: { onClose: () => void 
                     {syncResult.imported !== syncResult.products && (
                       <> · <span className="font-bold">{syncResult.imported}</span> bin rows</>
                     )}
+                    {(syncResult.salesSynced ?? 0) > 0 && <> · <span className="font-bold text-sky-400">{syncResult.salesSynced} sales records</span></>}
                     {(syncResult.skipped ?? 0) > 0 && <span className="text-orange-400 ml-2">({syncResult.skipped} inactive skipped)</span>}
                   </>
                 ) : (
@@ -179,20 +186,20 @@ export default function FinaleReportPanel({ onClose: _ }: { onClose: () => void 
         <div className="px-6 py-3 border-b border-orange-900/20 bg-[#12100d] flex gap-6 shrink-0">
           <div>
             <div className="text-lg font-black text-orange-400 tabular-nums">{data.totalProducts.toLocaleString()}</div>
-            <div className="text-[10px] text-orange-700 uppercase tracking-wide">Products</div>
+            <div className="text-[10px] text-white/40 uppercase tracking-wide">Products</div>
           </div>
           <div>
             <div className="text-lg font-black text-white tabular-nums">{data.totalBins.toLocaleString()}</div>
-            <div className="text-[10px] text-orange-700 uppercase tracking-wide">Bin Locations</div>
+            <div className="text-[10px] text-white/40 uppercase tracking-wide">Bin Locations</div>
           </div>
           <div>
             <div className="text-lg font-black text-emerald-400 tabular-nums">{Math.round(data.totalUnits).toLocaleString()}</div>
-            <div className="text-[10px] text-orange-700 uppercase tracking-wide">Total Units</div>
+            <div className="text-[10px] text-white/40 uppercase tracking-wide">Total Units</div>
           </div>
           {debouncedSearch && (
             <div>
               <div className="text-lg font-black text-amber-400 tabular-nums">{data.filteredTotal.toLocaleString()}</div>
-              <div className="text-[10px] text-orange-700 uppercase tracking-wide">Results</div>
+              <div className="text-[10px] text-white/40 uppercase tracking-wide">Results</div>
             </div>
           )}
         </div>
@@ -223,30 +230,42 @@ export default function FinaleReportPanel({ onClose: _ }: { onClose: () => void 
       {/* Table */}
       {!loading && data && data.rows.length > 0 && (
         <div className="flex-1 overflow-auto">
-          <table className="w-full text-xs">
+          <table className="text-xs border-collapse">
             <thead className="sticky top-0 bg-[#0d0a07] z-10">
-              <tr className="border-b border-orange-900/30">
-                <th className="text-left text-[10px] font-bold text-orange-700 px-4 py-3 uppercase tracking-[0.15em]">Product ID</th>
-                <th className="text-left text-[10px] font-bold text-orange-700 px-4 py-3 uppercase tracking-[0.15em]">Description</th>
-                <th className="text-left text-[10px] font-bold text-orange-700 px-4 py-3 uppercase tracking-[0.15em]">Category</th>
-                <th className="text-left text-[10px] font-bold text-orange-700 px-4 py-3 uppercase tracking-[0.15em]">Sublocations (configurable)</th>
-                <th className="text-right text-[10px] font-bold text-orange-700 px-4 py-3 uppercase tracking-[0.15em]">Stock: QoH</th>
-                <th className="text-right text-[10px] font-bold text-orange-700 px-4 py-3 uppercase tracking-[0.15em]">Stock: Available</th>
-                <th className="text-right text-[10px] font-bold text-orange-700 px-4 py-3 uppercase tracking-[0.15em]">Consumed Past 90d</th>
+              <tr className="border-b border-white/10">
+                <th className="text-left text-xs font-extrabold text-white/50 px-3 py-2.5 uppercase tracking-[0.1em] whitespace-nowrap">Product ID</th>
+                <th className="text-left text-xs font-extrabold text-white/50 px-3 py-2.5 uppercase tracking-[0.1em] whitespace-nowrap">Description</th>
+                <th className="text-left text-xs font-extrabold text-white/50 px-3 py-2.5 uppercase tracking-[0.1em] whitespace-nowrap">Category</th>
+                <th className="text-left text-xs font-extrabold text-white/50 px-3 py-2.5 uppercase tracking-[0.1em] whitespace-nowrap">Bin Location</th>
+                <th className="text-right text-xs font-extrabold text-white/50 px-3 py-2.5 uppercase tracking-[0.1em] whitespace-nowrap">Stock QoH</th>
+                <th className="text-right text-xs font-extrabold text-white/50 px-3 py-2.5 uppercase tracking-[0.1em] whitespace-nowrap">Available</th>
+                <th className="text-right text-xs font-extrabold text-white/50 px-3 py-2.5 uppercase tracking-[0.1em] whitespace-nowrap">Consumed 90d</th>
+                <th className="text-right text-xs font-extrabold text-white/50 px-3 py-2.5 uppercase tracking-[0.1em] whitespace-nowrap">Sale 7d</th>
+                <th className="text-right text-xs font-extrabold text-white/50 px-3 py-2.5 uppercase tracking-[0.1em] whitespace-nowrap">Sale 30d</th>
+                <th className="text-right text-xs font-extrabold text-white/50 px-3 py-2.5 uppercase tracking-[0.1em] whitespace-nowrap">Sale 60d</th>
+                <th className="text-right text-xs font-extrabold text-white/50 px-3 py-2.5 uppercase tracking-[0.1em] whitespace-nowrap">Sale 90d</th>
+                <th className="text-right text-xs font-extrabold text-white/50 px-3 py-2.5 uppercase tracking-[0.1em] whitespace-nowrap">This Month</th>
+                <th className="text-right text-xs font-extrabold text-white/50 px-3 py-2.5 uppercase tracking-[0.1em] whitespace-nowrap">Last Month</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-orange-900/10">
+            <tbody className="divide-y divide-white/5">
               {data.rows.map((r, i) => (
-                <tr key={i} className="hover:bg-orange-500/5 transition-colors">
-                  <td className="px-4 py-2 font-mono text-orange-300 font-medium">{r.product_id}</td>
-                  <td className="px-4 py-2 text-orange-200/60 max-w-xs truncate">{r.product_name || '—'}</td>
-                  <td className="px-4 py-2 text-orange-400/70 text-xs">{r.category || '—'}</td>
-                  <td className="px-4 py-2 font-mono text-orange-400">{r.bin_location || '—'}</td>
-                  <td className="px-4 py-2 text-right font-mono font-bold text-white tabular-nums">{r.qoh}</td>
-                  <td className="px-4 py-2 text-right font-mono font-bold text-emerald-400 tabular-nums">{r.available != null ? r.available : '—'}</td>
-                  <td className="px-4 py-2 text-right font-mono text-amber-400 tabular-nums">
-                    {r.consumed_90d != null ? Math.round(r.consumed_90d).toLocaleString() : '—'}
+                <tr key={i} className="hover:bg-white/5 transition-colors">
+                  <td className="px-3 py-2 font-mono text-orange-300 font-semibold whitespace-nowrap">{r.product_id}</td>
+                  <td className="px-3 py-2 text-white/60 max-w-[240px] truncate" title={r.product_name || ''}>{r.product_name || '—'}</td>
+                  <td className="px-3 py-2 text-white/50 whitespace-nowrap">{r.category || '—'}</td>
+                  <td className="px-3 py-2 font-mono text-white/60 whitespace-nowrap">{r.bin_location || '—'}</td>
+                  <td className="px-3 py-2 text-right font-mono font-bold text-white tabular-nums whitespace-nowrap">{r.qoh > 0 ? r.qoh.toLocaleString() : <span className="text-white/30">0</span>}</td>
+                  <td className="px-3 py-2 text-right font-mono font-bold text-emerald-400 tabular-nums whitespace-nowrap">{r.available != null && r.available > 0 ? r.available.toLocaleString() : <span className="text-white/30">0</span>}</td>
+                  <td className="px-3 py-2 text-right font-mono text-amber-400 tabular-nums whitespace-nowrap">
+                    {r.consumed_90d != null && r.consumed_90d > 0 ? Math.round(r.consumed_90d).toLocaleString() : <span className="text-white/30">—</span>}
                   </td>
+                  <td className="px-3 py-2 text-right font-mono text-sky-400 tabular-nums whitespace-nowrap">{r.sales_7d != null && r.sales_7d > 0 ? r.sales_7d.toLocaleString() : <span className="text-white/30">0</span>}</td>
+                  <td className="px-3 py-2 text-right font-mono text-sky-400 tabular-nums whitespace-nowrap">{r.sales_30d != null && r.sales_30d > 0 ? r.sales_30d.toLocaleString() : <span className="text-white/30">0</span>}</td>
+                  <td className="px-3 py-2 text-right font-mono text-sky-400 tabular-nums whitespace-nowrap">{r.sales_60d != null && r.sales_60d > 0 ? r.sales_60d.toLocaleString() : <span className="text-white/30">0</span>}</td>
+                  <td className="px-3 py-2 text-right font-mono text-sky-400 tabular-nums whitespace-nowrap">{r.sales_90d != null && r.sales_90d > 0 ? r.sales_90d.toLocaleString() : <span className="text-white/30">0</span>}</td>
+                  <td className="px-3 py-2 text-right font-mono text-emerald-400 tabular-nums whitespace-nowrap">{r.sales_this_month != null && r.sales_this_month > 0 ? r.sales_this_month.toLocaleString() : <span className="text-white/30">0</span>}</td>
+                  <td className="px-3 py-2 text-right font-mono text-emerald-300 tabular-nums whitespace-nowrap">{r.sales_last_month != null && r.sales_last_month > 0 ? r.sales_last_month.toLocaleString() : <span className="text-white/30">0</span>}</td>
                 </tr>
               ))}
             </tbody>
@@ -257,14 +276,14 @@ export default function FinaleReportPanel({ onClose: _ }: { onClose: () => void 
       {/* Pagination */}
       {data && totalPages > 1 && (
         <div className="shrink-0 flex items-center justify-between px-6 py-3 border-t border-orange-900/30 bg-[#0d0a07]">
-          <span className="text-xs text-orange-700">
+          <span className="text-xs text-white/40">
             Showing {((page - 1) * PAGE_SIZE) + 1}–{Math.min(page * PAGE_SIZE, data.filteredTotal)} of {data.filteredTotal.toLocaleString()} rows
           </span>
           <div className="flex items-center gap-2">
             <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1} className="btn-ghost h-7 w-7 p-0 justify-center">
               <ChevronLeft className="w-3.5 h-3.5" />
             </button>
-            <span className="text-xs text-orange-400">Page {page} / {totalPages}</span>
+            <span className="text-xs text-white/50">Page {page} / {totalPages}</span>
             <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages} className="btn-ghost h-7 w-7 p-0 justify-center">
               <ChevronRight className="w-3.5 h-3.5" />
             </button>
