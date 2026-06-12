@@ -153,26 +153,26 @@ export default function Dashboard() {
       <AssistantChat />
 
       {/* ── Left sidebar ── */}
-      <aside className="w-52 shrink-0 flex flex-col bg-gradient-to-b from-[#0d0a07] to-[#09090b] border-r border-orange-900/30 z-30">
+      <aside className="w-64 shrink-0 flex flex-col bg-gradient-to-b from-[#0d0a07] to-[#09090b] border-r border-orange-900/30 z-30">
         {/* Logo */}
-        <div className="px-4 py-5 border-b border-orange-900/30 flex items-center gap-2.5">
+        <div className="px-4 py-8 border-b border-orange-900/30 flex items-center gap-3">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src="https://thepacklabs.com/wp-content/uploads/2025/03/packlogo.png"
             alt="The Pack Labs"
-            className="h-7 w-auto"
+            className="h-14 w-auto"
           />
-          <div className="w-px h-6 bg-orange-900/40" />
+          <div className="w-px h-10 bg-orange-900/40" />
           <button
             onClick={() => setActiveTab('splash')}
-            className="text-base font-black text-orange-400 tracking-tight uppercase hover:text-orange-300 transition-colors"
+            className="text-2xl font-black text-orange-400 tracking-tight uppercase hover:text-orange-300 transition-colors"
           >
             Nami
           </button>
         </div>
 
         {/* Nav items */}
-        <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+        <nav className="flex-1 px-3 py-12 space-y-1 overflow-y-auto">
           <SideNavItem tab="home"        icon={<BarChart2 className="w-4 h-4 shrink-0" />}       label="Dashboard" />
           <SideNavItem tab="dashboard"   icon={<Package className="w-4 h-4 shrink-0" />}         label="Inventory" />
           <SideNavItem tab="finalereport" icon={<FileSpreadsheet className="w-4 h-4 shrink-0" />} label="Finale Report" />
@@ -204,7 +204,7 @@ export default function Dashboard() {
         {/* Top bar */}
         <header className="h-14 border-b border-orange-900/30 bg-[#0d0a07] flex items-center px-5 gap-3 shrink-0 z-20">
           <div className="flex-1" />
-          <button onClick={() => setShowSheets(true)} className="btn text-sm bg-orange-600/20 text-orange-400 border border-orange-600/30 hover:bg-orange-600/30">
+          <button onClick={() => setShowSheets(true)} className="btn text-sm bg-orange-600/20 text-white border border-orange-600/30 hover:bg-orange-600/30">
             <FileSpreadsheet className="w-4 h-4" /> Daily Cycle Count
           </button>
           <button onClick={() => setShowReport(true)} className="btn-ghost text-sm">

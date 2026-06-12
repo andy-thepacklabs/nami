@@ -103,7 +103,7 @@ export async function GET(req: Request) {
     `).all() as { product_id: string; product_name: string | null; category: string | null; qoh: number; consumed_90d: number; monthly_req: number; mo_on_hand: number }[]
   , [])
 
-  // Top 5 consumed
+  // Top 5 consumed — Raw Materials only
   const topConsumed = tryQuery(() =>
     db.prepare(`
       SELECT c.product_id, s.product_name, s.category,
@@ -112,7 +112,7 @@ export async function GET(req: Request) {
       FROM finale_consumed_90d c
       LEFT JOIN (SELECT product_id, product_name, category FROM finale_stock_csv GROUP BY product_id) s
         ON s.product_id = c.product_id
-      WHERE c.quantity > 0
+      WHERE c.quantity > 0 AND s.category = 'RAW MATERIALS'
       ORDER BY c.quantity DESC
       LIMIT 5
     `).all() as { product_id: string; product_name: string | null; category: string | null; consumed_90d: number; consumed_7d: number }[]
