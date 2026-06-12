@@ -145,6 +145,27 @@ export async function POST() {
   }
 }
 
+async function fetchActiveSublocations(): Promise<Set<string>> {
+  const active = new Set<string>()
+  try {
+    const res = await finaleGet('sublocation')
+    if (res.status !== 200) return active
+    const data = res.data as Record<string, unknown[]>
+    const names    = (data.sublocationId  || data.name || []) as string[]
+    const statuses = (data.statusId       || data.status || []) as string[]
+    for (let i = 0; i < names.length; i++) {
+      const name   = (names[i] || '').trim()
+      const status = (statuses[i] || '').toUpperCase()
+      if (name.startsWith('SFS-') && !status.includes('INACTIVE')) {
+        active.add(name)
+      }
+    }
+  } catch (err) {
+    console.warn('[sync] fetchActiveSublocations failed:', err)
+  }
+  return active
+}
+
 async function fetchConsumed90d(): Promise<Map<string, number>> {
   const consumed = new Map<string, number>()
   try {
@@ -308,6 +329,10 @@ async function doSync(): Promise<ReturnType<typeof NextResponse.json>> {
 
     const hasSublocs = activeProducts.some(p => p.stockSublocationSummary && p.stockSublocationSummary.trim() !== '')
 
+    // Fetch active SFS- sublocations to use as whitelist (1 REST call)
+    const activeBins = await fetchActiveSublocations()
+    const filterBin = (bin: string) => activeBins.size > 0 ? activeBins.has(bin) : bin.startsWith('SFS-')
+
     db.prepare('DELETE FROM finale_stock_csv').run()
     const ins = db.prepare(`
       INSERT OR REPLACE INTO finale_stock_csv (product_id, bin_location, product_name, category, qoh, available, imported_at)
@@ -324,7 +349,7 @@ async function doSync(): Promise<ReturnType<typeof NextResponse.json>> {
         if (!pid) continue
         if (hasSublocs && p.stockSublocationSummary) {
           const bins = parseSublocationSummary(p.stockSublocationSummary)
-            .filter(b => b.bin.startsWith('SFS-'))
+            .filter(b => filterBin(b.bin))
           if (bins.length > 0) {
             for (const { bin, qty } of bins) { ins.run(pid, bin, name, cat, qty, available); imported++ }
             continue
