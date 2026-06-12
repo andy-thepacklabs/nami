@@ -17,14 +17,14 @@ export async function GET() {
       SELECT s.product_id, s.product_name,
              SUM(s.qoh) as qoh,
              MAX(s.available) as available,
-             c.quantity as consumed_90d,
-             sv.sales_90d
+             CAST(NULLIF(c.quantity,'') AS REAL) as consumed_90d,
+             CAST(NULLIF(sv.sales_90d,'') AS REAL) as sales_90d
       FROM finale_stock_csv s
       LEFT JOIN finale_consumed_90d c ON c.product_id = s.product_id
       LEFT JOIN finale_sales_csv sv ON sv.product_id = s.product_id
-      WHERE s.product_id LIKE 'MKT-%'
-         OR s.product_id LIKE 'IM-%'
-         OR s.product_id LIKE 'mm-%'
+      WHERE upper(s.product_id) LIKE 'MKT-%'
+         OR upper(s.product_id) LIKE 'IM-%'
+         OR upper(s.product_id) LIKE 'MM-%'
       GROUP BY s.product_id
       ORDER BY s.product_id
     `).all() as { product_id: string; product_name: string | null; qoh: number; available: number; consumed_90d: number | null; sales_90d: number | null }[]
