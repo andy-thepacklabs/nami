@@ -39,8 +39,8 @@ export default function EcomRestockPanel() {
   // Derived columns
   const tableRows = rows.map(r => {
     const daily = (r.sales_60d ?? 0) / 60
-    const restockPoint = Math.ceil(daily * 14)
-    const qtyToRestock = Math.max(0, restockPoint - r.qoh)
+    const restockPoint = Math.ceil(daily * 7)
+    const qtyToRestock = Math.max(0, Math.ceil(daily * 28) - r.qoh)
     return { ...r, restockPoint, qtyToRestock }
   })
 
@@ -53,7 +53,7 @@ export default function EcomRestockPanel() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-white font-semibold text-base">Ecom Single Restock</h2>
-          <p className="text-white/40 text-xs mt-0.5">-01 SKUs · Restock Point = 2-week supply based on last 60D sales</p>
+          <p className="text-white/40 text-xs mt-0.5">-01 SKUs · Restock Point = 1-week supply · Qty to Restock targets 4-week supply</p>
         </div>
         <button
           onClick={load}
@@ -83,8 +83,8 @@ export default function EcomRestockPanel() {
                 <th className="px-3 py-2.5 font-medium">Description</th>
                 <th className="px-3 py-2.5 font-medium text-right">Stock QoH</th>
                 <th className="px-3 py-2.5 font-medium text-right">Last 60D Sale</th>
-                <th className="px-3 py-2.5 font-medium text-right">Restock Point (2wk)</th>
-                <th className="px-3 py-2.5 font-medium text-right">Qty to Restock</th>
+                <th className="px-3 py-2.5 font-medium text-right">Restock Point (1wk)</th>
+                <th className="px-3 py-2.5 font-medium text-right">Qty to Restock (4wk)</th>
               </tr>
             </thead>
             <tbody>
