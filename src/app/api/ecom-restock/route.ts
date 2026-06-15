@@ -19,6 +19,7 @@ export async function GET() {
         AND s.product_id NOT LIKE '%-14-%'
         AND s.product_id NOT LIKE '%-450-%'
         AND upper(s.product_id) NOT LIKE 'S-%'
+        AND upper(s.product_id) NOT LIKE 'VIP-%'
       GROUP BY s.product_id
       ORDER BY s.product_id
     `).all() as {
