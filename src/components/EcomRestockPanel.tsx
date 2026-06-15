@@ -19,8 +19,20 @@ function fmt(n: number) {
   return n.toLocaleString('en-US', { maximumFractionDigits: 1 })
 }
 
+function genTicketNumber() {
+  const now = new Date()
+  const yy = String(now.getFullYear()).slice(2)
+  const mm = String(now.getMonth() + 1).padStart(2, '0')
+  const dd = String(now.getDate()).padStart(2, '0')
+  const hhmm = String(now.getHours()).padStart(2, '0') + String(now.getMinutes()).padStart(2, '0')
+  return `RST-${yy}${mm}${dd}-${hhmm}`
+}
+
 function ReportModal({ items, onClose }: { items: DerivedRow[]; onClose: () => void }) {
   const printRef = useRef<HTMLDivElement>(null)
+  const [department, setDepartment] = useState('')
+  const [name, setName] = useState('')
+  const ticketNumber = useRef(genTicketNumber())
   const date = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
 
   function handlePrint() {
@@ -32,16 +44,18 @@ function ReportModal({ items, onClose }: { items: DerivedRow[]; onClose: () => v
       <!DOCTYPE html>
       <html>
         <head>
-          <title>Ecom Single Restock Report — ${date}</title>
+          <title>Restock Ticket ${ticketNumber.current}</title>
           <style>
             * { box-sizing: border-box; margin: 0; padding: 0; }
             body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 12px; color: #111; padding: 32px; }
-            h1 { font-size: 18px; font-weight: 700; margin-bottom: 4px; }
-            .subtitle { color: #666; font-size: 11px; margin-bottom: 24px; }
+            h1 { font-size: 18px; font-weight: 700; margin-bottom: 16px; }
+            .meta { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 24px; padding: 14px 16px; background: #f3f4f6; border-radius: 6px; border: 1px solid #e5e7eb; }
+            .meta-item label { display: block; font-size: 9px; text-transform: uppercase; letter-spacing: 0.06em; color: #888; margin-bottom: 3px; }
+            .meta-item span { font-size: 13px; font-weight: 600; color: #111; }
             table { width: 100%; border-collapse: collapse; }
             th { background: #f3f4f6; text-align: left; padding: 8px 10px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: #555; border-bottom: 2px solid #e5e7eb; }
             th.r, td.r { text-align: right; }
-            td { padding: 7px 10px; border-bottom: 1px solid #e5e7eb; font-size: 11px; }
+            td { padding: 8px 10px; border-bottom: 1px solid #e5e7eb; font-size: 11px; }
             tr:nth-child(even) td { background: #f9fafb; }
             .qty { font-weight: 700; color: #dc2626; }
             .footer { margin-top: 20px; font-size: 10px; color: #999; }
@@ -58,12 +72,12 @@ function ReportModal({ items, onClose }: { items: DerivedRow[]; onClose: () => v
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-      <div className="bg-[#1a1f2e] border border-white/10 rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col">
+      <div className="bg-[#1a1f2e] border border-white/10 rounded-xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col">
         {/* Modal header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-white/10">
           <div>
             <h2 className="text-white font-semibold text-base">Restock Report</h2>
-            <p className="text-white/40 text-xs mt-0.5">{items.length} items need restocking · Generated {date}</p>
+            <p className="text-white/40 text-xs mt-0.5">{items.length} items · Ticket {ticketNumber.current}</p>
           </div>
           <div className="flex items-center gap-2">
             <button
@@ -82,19 +96,59 @@ function ReportModal({ items, onClose }: { items: DerivedRow[]; onClose: () => v
           </div>
         </div>
 
+        {/* Fields */}
+        <div className="px-5 pt-4 pb-3 grid grid-cols-2 gap-3 border-b border-white/10">
+          <div className="flex flex-col gap-1">
+            <label className="text-white/40 text-[10px] uppercase tracking-wider">Department</label>
+            <input
+              value={department}
+              onChange={e => setDepartment(e.target.value)}
+              placeholder="e.g. Fulfillment"
+              className="bg-white/5 border border-white/10 rounded px-3 py-1.5 text-sm text-white placeholder-white/20 focus:outline-none focus:border-sky-500/50"
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-white/40 text-[10px] uppercase tracking-wider">Name</label>
+            <input
+              value={name}
+              onChange={e => setName(e.target.value)}
+              placeholder="Your name"
+              className="bg-white/5 border border-white/10 rounded px-3 py-1.5 text-sm text-white placeholder-white/20 focus:outline-none focus:border-sky-500/50"
+            />
+          </div>
+        </div>
+
         {/* Printable content */}
         <div className="flex-1 overflow-auto p-5">
           <div ref={printRef}>
-            <h1>Ecom Single Restock Report</h1>
-            <p className="subtitle">Generated: {date} &nbsp;·&nbsp; {items.length} items &nbsp;·&nbsp; Qty to Restock = 4-week supply target</p>
+            <h1>Ecom Single Restock</h1>
+            <div className="meta">
+              <div className="meta-item">
+                <label>Ticket #</label>
+                <span>{ticketNumber.current}</span>
+              </div>
+              <div className="meta-item">
+                <label>Department</label>
+                <span>{department || '—'}</span>
+              </div>
+              <div className="meta-item">
+                <label>Requested By</label>
+                <span>{name || '—'}</span>
+              </div>
+              <div className="meta-item">
+                <label>Date</label>
+                <span>{date}</span>
+              </div>
+              <div className="meta-item">
+                <label>Items</label>
+                <span>{items.length}</span>
+              </div>
+            </div>
             <table>
               <thead>
                 <tr>
-                  <th style={{ width: '140px' }}>Product ID</th>
+                  <th style={{ width: '150px' }}>Product ID</th>
                   <th>Description</th>
-                  <th className="r">Stock QoH</th>
-                  <th className="r">60D Sales</th>
-                  <th className="r">Restock Pt (1wk)</th>
                   <th className="r">Qty to Restock (4wk)</th>
                 </tr>
               </thead>
@@ -103,15 +157,12 @@ function ReportModal({ items, onClose }: { items: DerivedRow[]; onClose: () => v
                   <tr key={r.product_id}>
                     <td style={{ fontFamily: 'monospace' }}>{r.product_id}</td>
                     <td>{r.product_name ?? '—'}</td>
-                    <td className="r">{fmt(r.qoh)}</td>
-                    <td className="r">{r.sales_60d != null ? fmt(r.sales_60d) : '—'}</td>
-                    <td className="r">{fmt(r.restockPoint)}</td>
                     <td className="r qty">{fmt(r.qtyToRestock)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
-            <p className="footer">Nami · Ecom Single Restock · {date}</p>
+            <p className="footer">Nami · Ecom Single Restock · {ticketNumber.current} · {date}</p>
           </div>
         </div>
       </div>
