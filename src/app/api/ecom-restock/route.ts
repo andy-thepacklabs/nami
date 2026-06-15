@@ -15,6 +15,10 @@ export async function GET() {
       FROM finale_stock_csv s
       LEFT JOIN finale_sales_csv sv ON sv.product_id = s.product_id
       WHERE s.product_id LIKE '%-01'
+        AND s.product_id NOT LIKE '%-QP-%'
+        AND s.product_id NOT LIKE '%-14-%'
+        AND s.product_id NOT LIKE '%-450-%'
+        AND upper(s.product_id) NOT LIKE 'S-%'
       GROUP BY s.product_id
       ORDER BY s.product_id
     `).all() as {
