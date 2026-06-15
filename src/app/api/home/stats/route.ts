@@ -64,9 +64,9 @@ export async function GET(req: Request) {
     return r?.cnt ?? 0
   }, 0)
 
-  // Out of stock — Finished Goods + Raw Materials + Marketing
+  // Out of stock — Finished Goods + Raw Materials + Marketing, singles only (-01 suffix)
   const outOfStock = tryQuery(() => {
-    const r = db.prepare(`SELECT COUNT(DISTINCT product_id) AS cnt FROM finale_stock_csv WHERE qoh <= 0 AND ${STOCK_FILTER}`).get() as { cnt: number }
+    const r = db.prepare(`SELECT COUNT(DISTINCT product_id) AS cnt FROM finale_stock_csv WHERE qoh <= 0 AND ${STOCK_FILTER} AND product_id LIKE '%-01'`).get() as { cnt: number }
     return r?.cnt ?? 0
   }, 0)
 
@@ -74,7 +74,7 @@ export async function GET(req: Request) {
     db.prepare(`
       SELECT product_id, MAX(product_name) AS product_name, MAX(category) AS category
       FROM finale_stock_csv
-      WHERE qoh <= 0 AND ${STOCK_FILTER}
+      WHERE qoh <= 0 AND ${STOCK_FILTER} AND product_id LIKE '%-01'
       GROUP BY product_id
       ORDER BY category, product_id
     `).all() as { product_id: string; product_name: string | null; category: string | null }[]
