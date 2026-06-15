@@ -30,8 +30,9 @@ function genTicketNumber() {
 
 function ReportModal({ items, onClose }: { items: DerivedRow[]; onClose: () => void }) {
   const printRef = useRef<HTMLDivElement>(null)
-  const [department, setDepartment] = useState('')
-  const [name, setName] = useState('')
+  const [department, setDepartment] = useState('Inventory Control')
+  const [name, setName] = useState('Andy Nguyen')
+  const [fulfillBy, setFulfillBy] = useState('')
   const ticketNumber = useRef(genTicketNumber())
   const date = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
 
@@ -97,22 +98,31 @@ function ReportModal({ items, onClose }: { items: DerivedRow[]; onClose: () => v
         </div>
 
         {/* Fields */}
-        <div className="px-5 pt-4 pb-3 grid grid-cols-2 gap-3 border-b border-white/10">
+        <div className="px-5 pt-4 pb-3 grid grid-cols-3 gap-3 border-b border-white/10">
           <div className="flex flex-col gap-1">
             <label className="text-white/40 text-[10px] uppercase tracking-wider">Department</label>
             <input
               value={department}
               onChange={e => setDepartment(e.target.value)}
-              placeholder="e.g. Fulfillment"
+              placeholder="e.g. Inventory Control"
               className="bg-white/5 border border-white/10 rounded px-3 py-1.5 text-sm text-white placeholder-white/20 focus:outline-none focus:border-sky-500/50"
             />
           </div>
           <div className="flex flex-col gap-1">
-            <label className="text-white/40 text-[10px] uppercase tracking-wider">Name</label>
+            <label className="text-white/40 text-[10px] uppercase tracking-wider">Requested By</label>
             <input
               value={name}
               onChange={e => setName(e.target.value)}
               placeholder="Your name"
+              className="bg-white/5 border border-white/10 rounded px-3 py-1.5 text-sm text-white placeholder-white/20 focus:outline-none focus:border-sky-500/50"
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-white/40 text-[10px] uppercase tracking-wider">Fulfill By</label>
+            <input
+              value={fulfillBy}
+              onChange={e => setFulfillBy(e.target.value)}
+              placeholder="Assigned to"
               className="bg-white/5 border border-white/10 rounded px-3 py-1.5 text-sm text-white placeholder-white/20 focus:outline-none focus:border-sky-500/50"
             />
           </div>
@@ -134,6 +144,10 @@ function ReportModal({ items, onClose }: { items: DerivedRow[]; onClose: () => v
               <div className="meta-item">
                 <label>Requested By</label>
                 <span>{name || '—'}</span>
+              </div>
+              <div className="meta-item">
+                <label>Fulfill By</label>
+                <span>{fulfillBy || '—'}</span>
               </div>
               <div className="meta-item">
                 <label>Date</label>
