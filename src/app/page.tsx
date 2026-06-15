@@ -23,6 +23,7 @@ import ReorderPanel from '@/components/ReorderPanel'
 import HomePanel from '@/components/HomePanel'
 import WohTable from '@/components/WohTable'
 import AssistantChat from '@/components/AssistantChat'
+import EcomRestockPanel from '@/components/EcomRestockPanel'
 
 interface HotBin { bin: string; count: number; critical_count: number }
 
@@ -47,7 +48,7 @@ interface WohRow { product_id: string; product_name: string | null; qoh: number;
 type SleeveRow = WohRow
 
 export default function Dashboard() {
-  const [activeTab, setActiveTab] = useState<'splash' | 'home' | 'dashboard' | 'reconcile' | 'cyclecount' | 'finalereport'>('home')
+  const [activeTab, setActiveTab] = useState<'splash' | 'home' | 'dashboard' | 'reconcile' | 'cyclecount' | 'finalereport' | 'ecomrestock'>('home')
   const [wohTab, setWohTab] = useState<'sleeve' | 'display' | 'mylar' | 'tube' | 'cone' | 'label' | 'grinder' | 'lab' | 'marketing' | 'insert' | null>(null)
   const [dashSub, setDashSub] = useState<'woh' | 'reorder'>('woh')
   const [labelRows, setLabelRows] = useState<WohRow[]>([])
@@ -216,6 +217,9 @@ export default function Dashboard() {
         {/* Top bar */}
         <header className="h-14 border-b border-orange-900/30 bg-[#0d0a07] flex items-center px-5 gap-3 shrink-0 z-20">
           <div className="flex-1" />
+          <button onClick={() => setActiveTab('ecomrestock')} className={cn('btn text-sm border', activeTab === 'ecomrestock' ? 'bg-sky-600/20 text-sky-400 border-sky-600/30' : 'bg-white/5 text-white/60 border-white/10 hover:bg-white/10 hover:text-white')}>
+            <Package className="w-4 h-4" /> Ecom Single Restock
+          </button>
           <button onClick={() => setShowSheets(true)} className="btn text-sm bg-orange-600/20 text-white border border-orange-600/30 hover:bg-orange-600/30">
             <FileSpreadsheet className="w-4 h-4" /> Daily Cycle Count
           </button>
@@ -251,6 +255,8 @@ export default function Dashboard() {
         <div className="flex-1 flex flex-col overflow-hidden">
           <FinaleReportPanel onClose={() => setActiveTab('dashboard')} />
         </div>
+      ) : activeTab === 'ecomrestock' ? (
+        <EcomRestockPanel />
       ) : activeTab === 'home' ? (
         <HomePanel />
       ) : (
