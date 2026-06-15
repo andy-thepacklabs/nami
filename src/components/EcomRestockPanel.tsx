@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { RefreshCw, Package } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
+import { RefreshCw, Package, FileText, Printer, X } from 'lucide-react'
 
 interface RestockRow {
   product_id: string
@@ -10,14 +10,120 @@ interface RestockRow {
   sales_60d: number | null
 }
 
+interface DerivedRow extends RestockRow {
+  restockPoint: number
+  qtyToRestock: number
+}
+
 function fmt(n: number) {
   return n.toLocaleString('en-US', { maximumFractionDigits: 1 })
+}
+
+function ReportModal({ items, onClose }: { items: DerivedRow[]; onClose: () => void }) {
+  const printRef = useRef<HTMLDivElement>(null)
+  const date = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+
+  function handlePrint() {
+    const content = printRef.current?.innerHTML
+    if (!content) return
+    const win = window.open('', '_blank')
+    if (!win) return
+    win.document.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Ecom Single Restock Report — ${date}</title>
+          <style>
+            * { box-sizing: border-box; margin: 0; padding: 0; }
+            body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 12px; color: #111; padding: 32px; }
+            h1 { font-size: 18px; font-weight: 700; margin-bottom: 4px; }
+            .subtitle { color: #666; font-size: 11px; margin-bottom: 24px; }
+            table { width: 100%; border-collapse: collapse; }
+            th { background: #f3f4f6; text-align: left; padding: 8px 10px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: #555; border-bottom: 2px solid #e5e7eb; }
+            th.r, td.r { text-align: right; }
+            td { padding: 7px 10px; border-bottom: 1px solid #e5e7eb; font-size: 11px; }
+            tr:nth-child(even) td { background: #f9fafb; }
+            .qty { font-weight: 700; color: #dc2626; }
+            .footer { margin-top: 20px; font-size: 10px; color: #999; }
+            @media print { body { padding: 16px; } }
+          </style>
+        </head>
+        <body>${content}</body>
+      </html>
+    `)
+    win.document.close()
+    win.focus()
+    win.print()
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+      <div className="bg-[#1a1f2e] border border-white/10 rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col">
+        {/* Modal header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-white/10">
+          <div>
+            <h2 className="text-white font-semibold text-base">Restock Report</h2>
+            <p className="text-white/40 text-xs mt-0.5">{items.length} items need restocking · Generated {date}</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handlePrint}
+              className="flex items-center gap-1.5 text-xs bg-sky-600 hover:bg-sky-500 text-white rounded px-3 py-1.5 transition-colors"
+            >
+              <Printer className="w-3.5 h-3.5" />
+              Print / Save PDF
+            </button>
+            <button
+              onClick={onClose}
+              className="text-white/40 hover:text-white/80 p-1.5 rounded transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        {/* Printable content */}
+        <div className="flex-1 overflow-auto p-5">
+          <div ref={printRef}>
+            <h1>Ecom Single Restock Report</h1>
+            <p className="subtitle">Generated: {date} &nbsp;·&nbsp; {items.length} items &nbsp;·&nbsp; Qty to Restock = 4-week supply target</p>
+            <table>
+              <thead>
+                <tr>
+                  <th style={{ width: '140px' }}>Product ID</th>
+                  <th>Description</th>
+                  <th className="r">Stock QoH</th>
+                  <th className="r">60D Sales</th>
+                  <th className="r">Restock Pt (1wk)</th>
+                  <th className="r">Qty to Restock (4wk)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map(r => (
+                  <tr key={r.product_id}>
+                    <td style={{ fontFamily: 'monospace' }}>{r.product_id}</td>
+                    <td>{r.product_name ?? '—'}</td>
+                    <td className="r">{fmt(r.qoh)}</td>
+                    <td className="r">{r.sales_60d != null ? fmt(r.sales_60d) : '—'}</td>
+                    <td className="r">{fmt(r.restockPoint)}</td>
+                    <td className="r qty">{fmt(r.qtyToRestock)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <p className="footer">Nami · Ecom Single Restock · {date}</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 export default function EcomRestockPanel() {
   const [rows, setRows] = useState<RestockRow[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [showReport, setShowReport] = useState(false)
 
   async function load() {
     setLoading(true)
@@ -36,8 +142,7 @@ export default function EcomRestockPanel() {
 
   useEffect(() => { load() }, [])
 
-  // Derived columns
-  const tableRows = rows.map(r => {
+  const tableRows: DerivedRow[] = rows.map(r => {
     const daily = (r.sales_60d ?? 0) / 60
     const restockPoint = Math.ceil(daily * 7)
     const qtyToRestock = Math.max(0, Math.ceil(daily * 28) - r.qoh)
@@ -49,20 +154,33 @@ export default function EcomRestockPanel() {
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden p-4 gap-4">
+      {showReport && <ReportModal items={needsRestock} onClose={() => setShowReport(false)} />}
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-white font-semibold text-base">Ecom Single Restock</h2>
           <p className="text-white/40 text-xs mt-0.5">-01 SKUs · Restock Point = 1-week supply · Qty to Restock targets 4-week supply</p>
         </div>
-        <button
-          onClick={load}
-          disabled={loading}
-          className="flex items-center gap-1.5 text-xs text-white/60 hover:text-white border border-white/10 hover:border-white/20 rounded px-3 py-1.5 transition-colors"
-        >
-          <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-          Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          {needsRestock.length > 0 && (
+            <button
+              onClick={() => setShowReport(true)}
+              className="flex items-center gap-1.5 text-xs bg-sky-600/20 hover:bg-sky-600/30 text-sky-400 border border-sky-600/30 rounded px-3 py-1.5 transition-colors"
+            >
+              <FileText className="w-3.5 h-3.5" />
+              Generate Report ({needsRestock.length})
+            </button>
+          )}
+          <button
+            onClick={load}
+            disabled={loading}
+            className="flex items-center gap-1.5 text-xs text-white/60 hover:text-white border border-white/10 hover:border-white/20 rounded px-3 py-1.5 transition-colors"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+            Refresh
+          </button>
+        </div>
       </div>
 
       {error && (
