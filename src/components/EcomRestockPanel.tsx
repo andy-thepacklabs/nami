@@ -214,21 +214,36 @@ function ReportModal({ items, bomEntries, onClose }: { items: DerivedRow[]; bomE
                 ))}
               </tbody>
             </table>
-            {hasBreakdown && (
-              <>
-                <div className="section-title">Display Pack Breakdown Plan</div>
-                {items.map(item => {
-                  const lines = breakdown.get(item.product_id)
-                  if (!lines) return null
-                  return lines.map(line => (
+            {hasBreakdown && (() => {
+              // Aggregate all recovered raw materials across all breakdowns
+              const allRecovered = new Map<string, number>()
+              const allBreakdownLines: { item: DerivedRow; line: BreakdownLine }[] = []
+
+              items.forEach(item => {
+                const lines = breakdown.get(item.product_id)
+                if (!lines) return
+                lines.forEach(line => {
+                  allBreakdownLines.push({ item, line })
+                  line.recovered.forEach(r => {
+                    allRecovered.set(r.component, (allRecovered.get(r.component) ?? 0) + r.totalQty)
+                  })
+                })
+              })
+
+              return (
+                <>
+                  <div className="section-title">Display Pack Breakdown Plan</div>
+                  {allBreakdownLines.map(({ item, line }) => (
                     <div key={item.product_id + line.displaySku} className="breakdown-card">
                       <div className="breakdown-header">
                         <span className="pack">{line.displaySku}</span>
-                        <span className="meta">Break {line.packsToBreak} pack{line.packsToBreak !== 1 ? 's' : ''} → yields {line.singlesYielded}× {item.product_id}</span>
+                        <span className="meta">
+                          Break <strong>{line.packsToBreak}</strong> pack{line.packsToBreak !== 1 ? 's' : ''} &nbsp;→&nbsp; yields <strong>{line.singlesYielded}</strong>× {item.product_id}
+                        </span>
                       </div>
                       {line.recovered.length > 0 && (
                         <div className="breakdown-body">
-                          <div className="recovered-label" style={{ marginBottom: '4px' }}>Also recovered</div>
+                          <div className="recovered-label" style={{ marginBottom: '4px' }}>Materials also collected back</div>
                           {line.recovered.map(r => (
                             <div key={r.component} className="breakdown-row">
                               <span style={{ fontFamily: 'monospace' }}>{r.component}</span>
@@ -238,10 +253,32 @@ function ReportModal({ items, bomEntries, onClose }: { items: DerivedRow[]; bomE
                         </div>
                       )}
                     </div>
-                  ))
-                })}
-              </>
-            )}
+                  ))}
+
+                  {allRecovered.size > 0 && (
+                    <>
+                      <div className="section-title" style={{ color: '#059669' }}>Total Raw Materials Collected Back</div>
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>Component / Raw Material</th>
+                            <th className="r">Total Qty Collected</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {Array.from(allRecovered.entries()).map(([comp, qty]) => (
+                            <tr key={comp}>
+                              <td style={{ fontFamily: 'monospace' }}>{comp}</td>
+                              <td className="r" style={{ fontWeight: 700, color: '#059669' }}>{fmt(qty)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </>
+                  )}
+                </>
+              )
+            })()}
 
             <p className="footer">Nami · Ecom Single Restock · {ticketNumber.current} · {date}</p>
           </div>
@@ -259,7 +296,8 @@ export default function EcomRestockPanel() {
   const [error, setError] = useState<string | null>(null)
   const [showReport, setShowReport] = useState(false)
   const [bomEntries, setBomEntries] = useState<BomEntry[]>([])
-  const [bomFileName, setBomFileName] = useState<string | null>(null)
+  const [bomLoaded, setBomLoaded] = useState(false)
+  const [bomSaving, setBomSaving] = useState(false)
 
   async function load() {
     setLoading(true)
@@ -276,15 +314,44 @@ export default function EcomRestockPanel() {
     }
   }
 
-  useEffect(() => { load() }, [])
+  async function loadBom() {
+    try {
+      const res = await fetch('/api/bom')
+      const data = await res.json()
+      if (data.rows?.length > 0) {
+        setBomEntries(data.rows.map((r: { parent_id: string; child_id: string; bom_qty: number }) => ({
+          sku: r.parent_id, component: r.child_id, qty: r.bom_qty
+        })))
+        setBomLoaded(true)
+      }
+    } catch { /* silent */ }
+  }
+
+  useEffect(() => { load(); loadBom() }, [])
 
   function handleBomUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
-    setBomFileName(file.name)
     const reader = new FileReader()
-    reader.onload = ev => setBomEntries(parseBomCsv(ev.target?.result as string))
+    reader.onload = async ev => {
+      const entries = parseBomCsv(ev.target?.result as string)
+      setBomEntries(entries)
+      setBomLoaded(true)
+      // Save to DB
+      setBomSaving(true)
+      try {
+        await fetch('/api/bom', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ entries }) })
+      } finally {
+        setBomSaving(false)
+      }
+    }
     reader.readAsText(file)
+  }
+
+  async function clearBom() {
+    setBomEntries([])
+    setBomLoaded(false)
+    await fetch('/api/bom', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ entries: [] }) })
   }
 
   const tableRows: DerivedRow[] = rows.map(r => {
@@ -309,7 +376,7 @@ export default function EcomRestockPanel() {
           </div>
           <div className="flex items-center gap-2">
             {/* BOM Upload */}
-            {!bomFileName ? (
+            {!bomLoaded ? (
               <label className="flex items-center gap-1.5 text-xs text-white/60 hover:text-white border border-white/10 hover:border-white/20 rounded px-3 py-1.5 transition-colors cursor-pointer">
                 <Upload className="w-3.5 h-3.5" />
                 Upload BOM
@@ -318,8 +385,8 @@ export default function EcomRestockPanel() {
             ) : (
               <div className="flex items-center gap-1.5 text-xs text-green-400 border border-green-600/30 bg-green-600/10 rounded px-3 py-1.5">
                 <CheckCircle2 className="w-3.5 h-3.5" />
-                BOM loaded
-                <button onClick={() => { setBomFileName(null); setBomEntries([]) }} className="ml-1 text-white/30 hover:text-white/60">
+                {bomSaving ? 'Saving…' : `BOM · ${bomEntries.length} entries`}
+                <button onClick={clearBom} className="ml-1 text-white/30 hover:text-white/60" title="Remove BOM">
                   <X className="w-3 h-3" />
                 </button>
               </div>
