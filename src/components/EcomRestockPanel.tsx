@@ -103,7 +103,8 @@ function buildBreakdown(items: DerivedRow[], bomEntries: BomEntry[]): Map<string
   const result = new Map<string, BreakdownLine[]>()
   for (const item of items) {
     const key = item.product_id.trim().toUpperCase()
-    const sources = componentToParents.get(key) ?? []
+    // Only break display packs where qty > 1 (skip bundles/kits that contain just 1 single)
+    const sources = (componentToParents.get(key) ?? []).filter(s => s.qty > 1)
     if (sources.length === 0) continue
     const lines: BreakdownLine[] = sources.map(src => {
       const packsToBreak = Math.ceil(item.qtyToRestock / src.qty)
