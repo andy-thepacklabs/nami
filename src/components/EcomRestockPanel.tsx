@@ -101,7 +101,20 @@ function ReportModal({ items, bomEntries, onClose }: { items: DerivedRow[]; bomE
   const date = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
 
   const breakdown = buildBreakdown(items, bomEntries)
-  const hasBreakdown = breakdown.size > 0
+
+  // Pre-compute all breakdown lines and total recovered materials
+  const allBreakdownLines: { item: DerivedRow; line: BreakdownLine }[] = []
+  const totalRecovered = new Map<string, number>()
+  items.forEach(item => {
+    const lines = breakdown.get(item.product_id) ?? []
+    lines.forEach(line => {
+      allBreakdownLines.push({ item, line })
+      line.recovered.forEach(r => {
+        totalRecovered.set(r.component, (totalRecovered.get(r.component) ?? 0) + r.totalQty)
+      })
+    })
+  })
+  const hasBreakdown = allBreakdownLines.length > 0
 
   function handlePrint() {
     const content = printRef.current?.innerHTML
@@ -149,7 +162,12 @@ function ReportModal({ items, bomEntries, onClose }: { items: DerivedRow[]; bomE
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: '1px solid rgba(255,255,255,0.1)', flexShrink: 0 }}>
           <div>
             <div style={{ color: 'white', fontWeight: 600, fontSize: '15px' }}>Restock Report</div>
-            <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '11px', marginTop: '2px' }}>{items.length} items · Ticket {ticketNumber.current}</div>
+            <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '11px', marginTop: '2px' }}>
+              {items.length} items · Ticket {ticketNumber.current}
+              {bomEntries.length > 0
+                ? <span style={{ color: '#4ade80', marginLeft: 8 }}>✓ BOM {bomEntries.length} entries · {allBreakdownLines.length} matches</span>
+                : <span style={{ color: '#f87171', marginLeft: 8 }}>⚠ No BOM loaded</span>}
+            </div>
           </div>
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
             <button onClick={handlePrint} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', background: '#0284c7', color: 'white', border: 'none', borderRadius: '6px', padding: '7px 14px', cursor: 'pointer' }}>
@@ -209,71 +227,60 @@ function ReportModal({ items, bomEntries, onClose }: { items: DerivedRow[]; bomE
                 ))}
               </tbody>
             </table>
-            {hasBreakdown && (() => {
-              // Aggregate all recovered raw materials across all breakdowns
-              const allRecovered = new Map<string, number>()
-              const allBreakdownLines: { item: DerivedRow; line: BreakdownLine }[] = []
-
-              items.forEach(item => {
-                const lines = breakdown.get(item.product_id)
-                if (!lines) return
-                lines.forEach(line => {
-                  allBreakdownLines.push({ item, line })
-                  line.recovered.forEach(r => {
-                    allRecovered.set(r.component, (allRecovered.get(r.component) ?? 0) + r.totalQty)
-                  })
-                })
-              })
-
-              return (
-                <>
-                  <div className="section-title">Display Pack Breakdown Plan</div>
-                  {allBreakdownLines.map(({ item, line }) => (
-                    <div key={item.product_id + line.displaySku} className="breakdown-card">
-                      <div className="breakdown-header">
-                        <span className="pack">{line.displaySku}</span>
-                        <span className="meta">
-                          Break <strong>{line.packsToBreak}</strong> pack{line.packsToBreak !== 1 ? 's' : ''} &nbsp;→&nbsp; yields <strong>{line.singlesYielded}</strong>× {item.product_id}
-                        </span>
-                      </div>
-                      {line.recovered.length > 0 && (
-                        <div className="breakdown-body">
-                          <div className="recovered-label" style={{ marginBottom: '4px' }}>Materials also collected back</div>
-                          {line.recovered.map(r => (
-                            <div key={r.component} className="breakdown-row">
-                              <span style={{ fontFamily: 'monospace' }}>{r.component}</span>
-                              <span style={{ fontWeight: 600 }}>×{r.totalQty}</span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
+            {hasBreakdown && (
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 700, margin: '28px 0 10px', paddingBottom: 6, borderBottom: '2px solid #e5e7eb' }}>
+                  Display Pack Breakdown Plan
+                </div>
+                {allBreakdownLines.map(({ item, line }) => (
+                  <div key={item.product_id + line.displaySku} style={{ border: '1px solid #e5e7eb', borderRadius: 6, marginBottom: 10, overflow: 'hidden' }}>
+                    <div style={{ background: '#f3f4f6', padding: '8px 12px', display: 'flex', gap: 16, alignItems: 'baseline' }}>
+                      <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 12, color: '#1d4ed8' }}>{line.displaySku}</span>
+                      <span style={{ fontSize: 10, color: '#555' }}>
+                        Break <strong>{line.packsToBreak}</strong> pack{line.packsToBreak !== 1 ? 's' : ''} → yields <strong>{line.singlesYielded}</strong>× {item.product_id}
+                      </span>
                     </div>
-                  ))}
+                    {line.recovered.length > 0 && (
+                      <div style={{ padding: '8px 12px' }}>
+                        <div style={{ color: '#059669', fontSize: 9, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>
+                          Materials collected back
+                        </div>
+                        {line.recovered.map(r => (
+                          <div key={r.component} style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0', fontSize: 11, borderBottom: '1px solid #f3f4f6' }}>
+                            <span style={{ fontFamily: 'monospace' }}>{r.component}</span>
+                            <span style={{ fontWeight: 600 }}>×{r.totalQty}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
 
-                  {allRecovered.size > 0 && (
-                    <>
-                      <div className="section-title" style={{ color: '#059669' }}>Total Raw Materials Collected Back</div>
-                      <table>
-                        <thead>
-                          <tr>
-                            <th>Component / Raw Material</th>
-                            <th className="r">Total Qty Collected</th>
+                {totalRecovered.size > 0 && (
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 700, margin: '28px 0 10px', paddingBottom: 6, borderBottom: '2px solid #059669', color: '#059669' }}>
+                      Total Raw Materials Collected Back
+                    </div>
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Component / Raw Material</th>
+                          <th style={{ textAlign: 'right' }}>Total Qty</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {Array.from(totalRecovered.entries()).map(([comp, qty]) => (
+                          <tr key={comp}>
+                            <td style={{ fontFamily: 'monospace' }}>{comp}</td>
+                            <td style={{ textAlign: 'right', fontWeight: 700, color: '#059669' }}>{fmt(qty)}</td>
                           </tr>
-                        </thead>
-                        <tbody>
-                          {Array.from(allRecovered.entries()).map(([comp, qty]) => (
-                            <tr key={comp}>
-                              <td style={{ fontFamily: 'monospace' }}>{comp}</td>
-                              <td className="r" style={{ fontWeight: 700, color: '#059669' }}>{fmt(qty)}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </>
-                  )}
-                </>
-              )
-            })()}
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
 
             <p className="footer">Nami · Ecom Single Restock · {ticketNumber.current} · {date}</p>
           </div>
