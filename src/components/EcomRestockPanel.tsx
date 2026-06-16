@@ -38,17 +38,17 @@ function genTicketNumber() {
 function parseBomCsv(text: string): BomEntry[] {
   const lines = text.trim().split(/\r?\n/)
   if (lines.length < 2) return []
-  const header = lines[0].split(',').map(h => h.trim().toLowerCase())
-  const skuIdx = header.findIndex(h => h.includes('sku') || h.includes('product'))
-  const compIdx = header.findIndex(h => h.includes('component') || h.includes('material') || h.includes('raw'))
-  const qtyIdx = header.findIndex(h => h.includes('qty') || h.includes('quantity'))
-  if (skuIdx === -1 || qtyIdx === -1) return []
+  const header = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/"/g, ''))
+  const parentIdx = header.findIndex(h => h.includes('parent'))
+  const childIdx  = header.findIndex(h => h.includes('child'))
+  const qtyIdx    = header.findIndex(h => h.includes('bom qty') || h.includes('qty') || h.includes('quantity'))
+  if (parentIdx === -1 || childIdx === -1 || qtyIdx === -1) return []
   return lines.slice(1).flatMap(line => {
     const cols = line.split(',').map(c => c.trim().replace(/^"|"$/g, ''))
-    const sku = cols[skuIdx]
-    const component = compIdx >= 0 ? cols[compIdx] : ''
-    const qty = parseFloat(cols[qtyIdx])
-    if (!sku || isNaN(qty)) return []
+    const sku       = cols[parentIdx]
+    const component = cols[childIdx]
+    const qty       = parseFloat(cols[qtyIdx])
+    if (!sku || !component || isNaN(qty)) return []
     return [{ sku, component, qty }]
   })
 }
