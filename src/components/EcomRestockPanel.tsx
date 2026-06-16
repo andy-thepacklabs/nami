@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { RefreshCw, Package, FileText, Printer, X } from 'lucide-react'
+import { RefreshCw, Package, FileText, Printer, X, Upload, CheckCircle2, Trash2 } from 'lucide-react'
 
 interface RestockRow {
   product_id: string
@@ -28,13 +28,51 @@ function genTicketNumber() {
   return `RST-${yy}${mm}${dd}-${hhmm}`
 }
 
+interface BomEntry {
+  sku: string
+  component: string
+  qty: number
+}
+
+function parseBomCsv(text: string): BomEntry[] {
+  const lines = text.trim().split(/\r?\n/)
+  if (lines.length < 2) return []
+  const header = lines[0].split(',').map(h => h.trim().toLowerCase())
+  const skuIdx = header.findIndex(h => h.includes('sku') || h.includes('product'))
+  const compIdx = header.findIndex(h => h.includes('component') || h.includes('material') || h.includes('raw'))
+  const qtyIdx = header.findIndex(h => h.includes('qty') || h.includes('quantity'))
+  if (skuIdx === -1 || qtyIdx === -1) return []
+  return lines.slice(1).flatMap(line => {
+    const cols = line.split(',').map(c => c.trim().replace(/^"|"$/g, ''))
+    const sku = cols[skuIdx]
+    const component = compIdx >= 0 ? cols[compIdx] : ''
+    const qty = parseFloat(cols[qtyIdx])
+    if (!sku || isNaN(qty)) return []
+    return [{ sku, component, qty }]
+  })
+}
+
 function ReportModal({ items, onClose }: { items: DerivedRow[]; onClose: () => void }) {
   const printRef = useRef<HTMLDivElement>(null)
   const [department, setDepartment] = useState('Inventory Control')
   const [name, setName] = useState('Andy Nguyen')
   const [fulfillBy, setFulfillBy] = useState('')
+  const [bomEntries, setBomEntries] = useState<BomEntry[]>([])
+  const [bomFileName, setBomFileName] = useState<string | null>(null)
   const ticketNumber = useRef(genTicketNumber())
   const date = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+
+  function handleBomUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setBomFileName(file.name)
+    const reader = new FileReader()
+    reader.onload = ev => {
+      const text = ev.target?.result as string
+      setBomEntries(parseBomCsv(text))
+    }
+    reader.readAsText(file)
+  }
 
   function handlePrint() {
     const content = printRef.current?.innerHTML
@@ -73,7 +111,7 @@ function ReportModal({ items, onClose }: { items: DerivedRow[]; onClose: () => v
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-      <div className="bg-[#1a1f2e] border border-white/10 rounded-xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col">
+      <div className="bg-[#1a1f2e] border border-white/10 rounded-xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col">
         {/* Modal header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-white/10">
           <div>
@@ -97,39 +135,91 @@ function ReportModal({ items, onClose }: { items: DerivedRow[]; onClose: () => v
           </div>
         </div>
 
-        {/* Fields */}
-        <div className="px-5 pt-4 pb-3 grid grid-cols-3 gap-3 border-b border-white/10">
-          <div className="flex flex-col gap-1">
-            <label className="text-white/40 text-[10px] uppercase tracking-wider">Department</label>
-            <input
-              value={department}
-              onChange={e => setDepartment(e.target.value)}
-              placeholder="e.g. Inventory Control"
-              className="bg-white/5 border border-white/10 rounded px-3 py-1.5 text-sm text-white placeholder-white/20 focus:outline-none focus:border-sky-500/50"
-            />
-          </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-white/40 text-[10px] uppercase tracking-wider">Requested By</label>
-            <input
-              value={name}
-              onChange={e => setName(e.target.value)}
-              placeholder="Your name"
-              className="bg-white/5 border border-white/10 rounded px-3 py-1.5 text-sm text-white placeholder-white/20 focus:outline-none focus:border-sky-500/50"
-            />
-          </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-white/40 text-[10px] uppercase tracking-wider">Fulfill By</label>
-            <input
-              value={fulfillBy}
-              onChange={e => setFulfillBy(e.target.value)}
-              placeholder="Assigned to"
-              className="bg-white/5 border border-white/10 rounded px-3 py-1.5 text-sm text-white placeholder-white/20 focus:outline-none focus:border-sky-500/50"
-            />
-          </div>
-        </div>
+        {/* Body: left BOM panel + right report */}
+        <div className="flex flex-1 overflow-hidden">
 
-        {/* Printable content */}
-        <div className="flex-1 overflow-auto p-5">
+          {/* LEFT — BOM Upload */}
+          <div className="w-60 shrink-0 border-r border-white/10 flex flex-col p-4 gap-4">
+            <div>
+              <p className="text-white/60 text-xs font-semibold uppercase tracking-wider mb-3">Bill of Materials</p>
+
+              {!bomFileName ? (
+                <label className="flex flex-col items-center justify-center gap-2 border-2 border-dashed border-white/10 hover:border-sky-500/40 rounded-lg p-5 cursor-pointer transition-colors group">
+                  <Upload className="w-6 h-6 text-white/20 group-hover:text-sky-400 transition-colors" />
+                  <span className="text-white/30 text-xs text-center group-hover:text-white/50 transition-colors">Upload BOM CSV</span>
+                  <input type="file" accept=".csv" className="hidden" onChange={handleBomUpload} />
+                </label>
+              ) : (
+                <div className="bg-white/5 border border-white/10 rounded-lg p-3 flex flex-col gap-2">
+                  <div className="flex items-start gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-green-400 shrink-0 mt-0.5" />
+                    <span className="text-white/70 text-xs break-all">{bomFileName}</span>
+                  </div>
+                  <p className="text-white/40 text-[10px]">{bomEntries.length} entries loaded</p>
+                  <button
+                    onClick={() => { setBomFileName(null); setBomEntries([]) }}
+                    className="flex items-center gap-1 text-[10px] text-red-400/60 hover:text-red-400 transition-colors mt-1"
+                  >
+                    <Trash2 className="w-3 h-3" /> Remove
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {bomEntries.length > 0 && (
+              <div className="flex-1 overflow-auto">
+                <p className="text-white/40 text-[10px] uppercase tracking-wider mb-2">Preview</p>
+                <div className="flex flex-col gap-1">
+                  {bomEntries.slice(0, 30).map((b, i) => (
+                    <div key={i} className="text-[10px] text-white/50 border-b border-white/5 pb-1">
+                      <span className="text-white/70 font-mono">{b.sku}</span>
+                      {b.component && <span className="text-white/30"> · {b.component}</span>}
+                      <span className="text-sky-400 ml-1">×{b.qty}</span>
+                    </div>
+                  ))}
+                  {bomEntries.length > 30 && (
+                    <p className="text-white/20 text-[10px]">+{bomEntries.length - 30} more…</p>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* RIGHT — Fields + Printable report */}
+          <div className="flex-1 flex flex-col overflow-hidden">
+            {/* Fields */}
+            <div className="px-5 pt-4 pb-3 grid grid-cols-3 gap-3 border-b border-white/10">
+              <div className="flex flex-col gap-1">
+                <label className="text-white/40 text-[10px] uppercase tracking-wider">Department</label>
+                <input
+                  value={department}
+                  onChange={e => setDepartment(e.target.value)}
+                  placeholder="e.g. Inventory Control"
+                  className="bg-white/5 border border-white/10 rounded px-3 py-1.5 text-sm text-white placeholder-white/20 focus:outline-none focus:border-sky-500/50"
+                />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-white/40 text-[10px] uppercase tracking-wider">Requested By</label>
+                <input
+                  value={name}
+                  onChange={e => setName(e.target.value)}
+                  placeholder="Your name"
+                  className="bg-white/5 border border-white/10 rounded px-3 py-1.5 text-sm text-white placeholder-white/20 focus:outline-none focus:border-sky-500/50"
+                />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-white/40 text-[10px] uppercase tracking-wider">Fulfill By</label>
+                <input
+                  value={fulfillBy}
+                  onChange={e => setFulfillBy(e.target.value)}
+                  placeholder="Assigned to"
+                  className="bg-white/5 border border-white/10 rounded px-3 py-1.5 text-sm text-white placeholder-white/20 focus:outline-none focus:border-sky-500/50"
+                />
+              </div>
+            </div>
+
+            {/* Printable content */}
+            <div className="flex-1 overflow-auto p-5">
           <div ref={printRef}>
             <h1>Ecom Single Restock</h1>
             <div className="meta">
@@ -179,6 +269,8 @@ function ReportModal({ items, onClose }: { items: DerivedRow[]; onClose: () => v
             <p className="footer">Nami · Ecom Single Restock · {ticketNumber.current} · {date}</p>
           </div>
         </div>
+          </div>{/* end right panel */}
+        </div>{/* end body */}
       </div>
     </div>
   )
