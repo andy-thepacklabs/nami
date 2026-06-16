@@ -53,6 +53,50 @@ function parseBomCsv(text: string): BomEntry[] {
   })
 }
 
+interface BreakdownLine {
+  displaySku: string        // e.g. EGBB-05-8PK
+  packsToBreak: number      // how many display packs to break
+  singlesYielded: number    // singles recovered = packsToBreak × qty_in_bom
+  recovered: { component: string; totalQty: number }[]  // other materials recovered
+}
+
+function buildBreakdown(items: DerivedRow[], bomEntries: BomEntry[]): Map<string, BreakdownLine[]> {
+  // parent → all its components
+  const parentToComponents = new Map<string, { component: string; qty: number }[]>()
+  // component → which parents produce it
+  const componentToParents = new Map<string, { parent: string; qty: number }[]>()
+
+  for (const b of bomEntries) {
+    if (!b.sku || !b.component) continue
+    if (!parentToComponents.has(b.sku)) parentToComponents.set(b.sku, [])
+    parentToComponents.get(b.sku)!.push({ component: b.component, qty: b.qty })
+    if (!componentToParents.has(b.component)) componentToParents.set(b.component, [])
+    componentToParents.get(b.component)!.push({ parent: b.sku, qty: b.qty })
+  }
+
+  // For each restock item, find display packs that yield it
+  const result = new Map<string, BreakdownLine[]>()
+  for (const item of items) {
+    const sources = componentToParents.get(item.product_id) ?? []
+    if (sources.length === 0) continue
+    const lines: BreakdownLine[] = sources.map(src => {
+      const packsToBreak = Math.ceil(item.qtyToRestock / src.qty)
+      const allComponents = parentToComponents.get(src.parent) ?? []
+      const recovered = allComponents
+        .filter(c => c.component !== item.product_id)
+        .map(c => ({ component: c.component, totalQty: c.qty * packsToBreak }))
+      return {
+        displaySku: src.parent,
+        packsToBreak,
+        singlesYielded: src.qty * packsToBreak,
+        recovered,
+      }
+    })
+    result.set(item.product_id, lines)
+  }
+  return result
+}
+
 function ReportModal({ items, bomEntries, onClose }: { items: DerivedRow[]; bomEntries: BomEntry[]; onClose: () => void }) {
   const printRef = useRef<HTMLDivElement>(null)
   const [department, setDepartment] = useState('Inventory Control')
@@ -60,6 +104,9 @@ function ReportModal({ items, bomEntries, onClose }: { items: DerivedRow[]; bomE
   const [fulfillBy, setFulfillBy] = useState('')
   const ticketNumber = useRef(genTicketNumber())
   const date = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+
+  const breakdown = buildBreakdown(items, bomEntries)
+  const hasBreakdown = breakdown.size > 0
 
   function handlePrint() {
     const content = printRef.current?.innerHTML
@@ -81,7 +128,16 @@ function ReportModal({ items, bomEntries, onClose }: { items: DerivedRow[]; bomE
         td { padding: 8px 10px; border-bottom: 1px solid #e5e7eb; font-size: 11px; }
         tr:nth-child(even) td { background: #f9fafb; }
         .qty { font-weight: 700; color: #dc2626; }
-        .footer { margin-top: 20px; font-size: 10px; color: #999; }
+        .section-title { font-size: 13px; font-weight: 700; margin: 28px 0 10px; padding-bottom: 6px; border-bottom: 2px solid #e5e7eb; color: #111; }
+        .breakdown-card { border: 1px solid #e5e7eb; border-radius: 6px; margin-bottom: 10px; overflow: hidden; }
+        .breakdown-header { background: #f3f4f6; padding: 8px 12px; display: flex; gap: 16px; align-items: baseline; }
+        .breakdown-header .pack { font-family: monospace; font-weight: 700; font-size: 12px; color: #1d4ed8; }
+        .breakdown-header .meta { font-size: 10px; color: #666; }
+        .breakdown-body { padding: 8px 12px; }
+        .breakdown-row { display: flex; justify-content: space-between; padding: 3px 0; font-size: 11px; border-bottom: 1px solid #f3f4f6; }
+        .breakdown-row:last-child { border-bottom: none; }
+        .recovered-label { color: #059669; font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
+        .footer { margin-top: 24px; font-size: 10px; color: #999; }
         @media print { body { padding: 16px; } }
       </style>
     </head><body>${content}</body></html>`)
@@ -158,6 +214,35 @@ function ReportModal({ items, bomEntries, onClose }: { items: DerivedRow[]; bomE
                 ))}
               </tbody>
             </table>
+            {hasBreakdown && (
+              <>
+                <div className="section-title">Display Pack Breakdown Plan</div>
+                {items.map(item => {
+                  const lines = breakdown.get(item.product_id)
+                  if (!lines) return null
+                  return lines.map(line => (
+                    <div key={item.product_id + line.displaySku} className="breakdown-card">
+                      <div className="breakdown-header">
+                        <span className="pack">{line.displaySku}</span>
+                        <span className="meta">Break {line.packsToBreak} pack{line.packsToBreak !== 1 ? 's' : ''} → yields {line.singlesYielded}× {item.product_id}</span>
+                      </div>
+                      {line.recovered.length > 0 && (
+                        <div className="breakdown-body">
+                          <div className="recovered-label" style={{ marginBottom: '4px' }}>Also recovered</div>
+                          {line.recovered.map(r => (
+                            <div key={r.component} className="breakdown-row">
+                              <span style={{ fontFamily: 'monospace' }}>{r.component}</span>
+                              <span style={{ fontWeight: 600 }}>×{r.totalQty}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))
+                })}
+              </>
+            )}
+
             <p className="footer">Nami · Ecom Single Restock · {ticketNumber.current} · {date}</p>
           </div>
         </div>
