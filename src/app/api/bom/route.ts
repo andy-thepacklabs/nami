@@ -33,12 +33,16 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'No entries provided' }, { status: 400 })
 
     const db = ensureTable()
-    const insert = db.prepare(`INSERT OR REPLACE INTO bom_entries (parent_id, child_id, bom_qty) VALUES (?, ?, ?)`)
-    const upsertAll = db.transaction((rows: typeof entries) => {
+    db.exec('BEGIN')
+    try {
       db.prepare(`DELETE FROM bom_entries`).run()
-      for (const r of rows) insert.run(r.sku, r.component, r.qty)
-    })
-    upsertAll(entries)
+      const insert = db.prepare(`INSERT INTO bom_entries (parent_id, child_id, bom_qty) VALUES (?, ?, ?)`)
+      for (const r of entries) insert.run(r.sku, r.component, r.qty)
+      db.exec('COMMIT')
+    } catch (err) {
+      db.exec('ROLLBACK')
+      throw err
+    }
     return NextResponse.json({ saved: entries.length })
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 })
