@@ -35,18 +35,44 @@ function genTicketNumber() {
   return `RST-${yy}${mm}${dd}-${hhmm}`
 }
 
+function parseCsvLine(line: string): string[] {
+  const cols: string[] = []
+  let cur = ''
+  let inQuote = false
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i]
+    if (ch === '"') {
+      if (inQuote && line[i + 1] === '"') { cur += '"'; i++ }
+      else inQuote = !inQuote
+    } else if (ch === ',' && !inQuote) {
+      cols.push(cur.trim())
+      cur = ''
+    } else {
+      cur += ch
+    }
+  }
+  cols.push(cur.trim())
+  return cols
+}
+
 function parseBomCsv(text: string): BomEntry[] {
-  const lines = text.trim().split(/\r?\n/)
+  // Strip UTF-8 BOM if present
+  const clean = text.replace(/^﻿/, '')
+  const lines = clean.trim().split(/\r?\n/)
   if (lines.length < 2) return []
-  const header = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/"/g, ''))
+  const header = parseCsvLine(lines[0]).map(h => h.toLowerCase())
   const parentIdx = header.findIndex(h => h.includes('parent'))
   const childIdx  = header.findIndex(h => h.includes('child'))
-  const qtyIdx    = header.findIndex(h => h.includes('bom qty') || h.includes('qty') || h.includes('quantity'))
-  if (parentIdx === -1 || childIdx === -1 || qtyIdx === -1) return []
+  const qtyIdx    = header.findIndex(h => h.includes('bom qty') || (h.includes('qty') && !h.includes('child')))
+  if (parentIdx === -1 || childIdx === -1 || qtyIdx === -1) {
+    console.warn('BOM CSV headers not found. Got:', header)
+    return []
+  }
   return lines.slice(1).flatMap(line => {
-    const cols = line.split(',').map(c => c.trim().replace(/^"|"$/g, ''))
-    const sku       = cols[parentIdx]
-    const component = cols[childIdx]
+    if (!line.trim()) return []
+    const cols = parseCsvLine(line)
+    const sku       = cols[parentIdx]?.trim()
+    const component = cols[childIdx]?.trim()
     const qty       = parseFloat(cols[qtyIdx])
     if (!sku || !component || isNaN(qty)) return []
     return [{ sku, component, qty }]
@@ -300,6 +326,7 @@ export default function EcomRestockPanel() {
   const [bomEntries, setBomEntries] = useState<BomEntry[]>([])
   const [bomLoaded, setBomLoaded] = useState(false)
   const [bomSaving, setBomSaving] = useState(false)
+  const [bomError, setBomError] = useState<string | null>(null)
 
   async function load() {
     setLoading(true)
@@ -336,13 +363,21 @@ export default function EcomRestockPanel() {
     if (!file) return
     const reader = new FileReader()
     reader.onload = async ev => {
+      setBomError(null)
       const entries = parseBomCsv(ev.target?.result as string)
+      if (entries.length === 0) {
+        setBomError('Could not parse BOM CSV — check column names (Parent ID, Child ID, BOM Qty)')
+        return
+      }
       setBomEntries(entries)
       setBomLoaded(true)
-      // Save to DB
       setBomSaving(true)
       try {
-        await fetch('/api/bom', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ entries }) })
+        const res = await fetch('/api/bom', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ entries }) })
+        const data = await res.json()
+        if (data.error) setBomError(`Save failed: ${data.error}`)
+      } catch (e) {
+        setBomError(`Save failed: ${String(e)}`)
       } finally {
         setBomSaving(false)
       }
@@ -416,6 +451,9 @@ export default function EcomRestockPanel() {
 
         {error && (
           <div className="text-red-400 text-xs bg-red-900/20 border border-red-900/30 rounded px-3 py-2">{error}</div>
+        )}
+        {bomError && (
+          <div className="text-red-400 text-xs bg-red-900/20 border border-red-900/30 rounded px-3 py-2">BOM: {bomError}</div>
         )}
 
         {loading && rows.length === 0 ? (
