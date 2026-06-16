@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { RefreshCw, Package, FileText, Printer, X, Upload, CheckCircle2, Trash2 } from 'lucide-react'
 
 interface RestockRow {
@@ -102,8 +103,8 @@ function ReportModal({ items, onClose }: { items: DerivedRow[]; onClose: () => v
     win.print()
   }
 
-  return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.7)', padding: '16px' }}>
+  return createPortal(
+    <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.7)', padding: '16px' }}>
       <div style={{ background: '#1a1f2e', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', width: '100%', maxWidth: '900px', height: '85vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 25px 50px rgba(0,0,0,0.5)' }}>
 
         {/* Header */}
@@ -224,7 +225,8 @@ function ReportModal({ items, onClose }: { items: DerivedRow[]; onClose: () => v
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
 
