@@ -38,7 +38,7 @@ export async function POST(req: Request) {
       parent_id TEXT NOT NULL, child_id TEXT NOT NULL, bom_qty REAL NOT NULL,
       PRIMARY KEY (parent_id, child_id)
     )`)
-    const insert = db.prepare(`INSERT INTO bom_entries (parent_id, child_id, bom_qty) VALUES (?, ?, ?)`)
+    const insert = db.prepare(`INSERT OR REPLACE INTO bom_entries (parent_id, child_id, bom_qty) VALUES (?, ?, ?)`)
     for (const r of entries) insert.run(r.sku, r.component, r.qty)
     return NextResponse.json({ saved: entries.length })
   } catch (err) {
