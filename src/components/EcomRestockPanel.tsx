@@ -2,13 +2,15 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import { RefreshCw, Package, FileText, Printer, X, Upload, CheckCircle2, Trash2 } from 'lucide-react'
+import { RefreshCw, Package, FileText, Printer, X, Upload, CheckCircle2, Trash2, Download } from 'lucide-react'
+import * as XLSX from 'xlsx'
 
 interface RestockRow {
   product_id: string
   product_name: string | null
   qoh: number
   sales_60d: number | null
+  bin_locations: string | null
 }
 
 interface DerivedRow extends RestockRow {
@@ -121,7 +123,7 @@ function buildBreakdown(items: DerivedRow[], bomEntries: BomEntry[]): Map<string
   return result
 }
 
-function ReportModal({ items, bomEntries, onClose }: { items: DerivedRow[]; bomEntries: BomEntry[]; onClose: () => void }) {
+function ReportModal({ items, bomEntries, packBinMap, onClose }: { items: DerivedRow[]; bomEntries: BomEntry[]; packBinMap: Map<string, string>; onClose: () => void }) {
   const printRef = useRef<HTMLDivElement>(null)
   const [department, setDepartment] = useState('Inventory Control')
   const [name, setName] = useState('Andy Nguyen')
@@ -144,6 +146,95 @@ function ReportModal({ items, bomEntries, onClose }: { items: DerivedRow[]; bomE
     })
   })
   const hasBreakdown = allBreakdownLines.length > 0
+
+  function getRestockSheet() {
+    return items.map(r => ({
+      'Product ID': r.product_id,
+      'Description': r.product_name ?? '',
+      'Bin Location': r.bin_locations ?? '',
+      'Qty to Restock (4wk)': r.qtyToRestock,
+    }))
+  }
+
+  function getBreakdownSheet() {
+    const rows: Record<string, string | number>[] = []
+    allBreakdownLines.forEach(({ item, line }) => {
+      rows.push({
+        'Single SKU': item.product_id,
+        'Restock To (Bin)': item.bin_locations ?? '',
+        'Display Pack': line.displaySku,
+        'Display Pack Bin': packBinMap.get(line.displaySku.toUpperCase()) ?? '',
+        'Packs to Break': line.packsToBreak,
+        'Singles Yielded': line.singlesYielded,
+      })
+      line.recovered.forEach(r => {
+        rows.push({
+          'Single SKU': '',
+          'Restock To (Bin)': '',
+          'Display Pack': '',
+          'Display Pack Bin': '',
+          'Packs to Break': '',
+          'Singles Yielded': '',
+          'Material Collected': r.component,
+          'Qty': r.totalQty,
+        })
+      })
+    })
+    return rows
+  }
+
+  function getTotalRecoveredSheet() {
+    return Array.from(totalRecovered.entries()).map(([comp, qty]) => ({
+      'Component / Raw Material': comp,
+      'Total Qty Collected': qty,
+    }))
+  }
+
+  function getInfoRows() {
+    return [
+      { Field: 'Ticket #',      Value: ticketNumber.current },
+      { Field: 'Department',    Value: department },
+      { Field: 'Requested By',  Value: name },
+      { Field: 'Fulfill By',    Value: fulfillBy || '—' },
+      { Field: 'Date',          Value: date },
+      { Field: 'Items',         Value: items.length },
+    ]
+  }
+
+  function handleExcelExport() {
+    const wb = XLSX.utils.book_new()
+    // Info sheet
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(getInfoRows()), 'Info')
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(getRestockSheet()), 'Restock List')
+    if (allBreakdownLines.length > 0) {
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(getBreakdownSheet()), 'Breakdown Plan')
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(getTotalRecoveredSheet()), 'Raw Materials Collected')
+    }
+    XLSX.writeFile(wb, `Restock-${ticketNumber.current}.xlsx`)
+  }
+
+  function sheetToCsvBlock(rows: Record<string, string | number>[]) {
+    if (rows.length === 0) return ''
+    const headers = Array.from(new Set(rows.flatMap(r => Object.keys(r))))
+    const lines = [headers.map(h => `"${h}"`).join(',')]
+    rows.forEach(r => lines.push(headers.map(h => `"${String(r[h] ?? '').replace(/"/g, '""')}"`).join(',')))
+    return lines.join('\n')
+  }
+
+  function handleCsvExport() {
+    const info = getInfoRows().map(r => `"${r.Field}","${r.Value}"`).join('\n')
+    const sections: string[] = [`=== ECOM SINGLE RESTOCK ===`, info, '', `=== RESTOCK LIST ===`, sheetToCsvBlock(getRestockSheet())]
+    if (allBreakdownLines.length > 0) {
+      sections.push('', `=== DISPLAY PACK BREAKDOWN PLAN ===`, sheetToCsvBlock(getBreakdownSheet()))
+      sections.push('', `=== TOTAL RAW MATERIALS COLLECTED ===`, sheetToCsvBlock(getTotalRecoveredSheet()))
+    }
+    const csv = sections.join('\n')
+    const blob = new Blob([csv], { type: 'text/csv' })
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = `Restock-${ticketNumber.current}.csv`
+    a.click()
+  }
 
   function handlePrint() {
     const content = printRef.current?.innerHTML
@@ -199,8 +290,14 @@ function ReportModal({ items, bomEntries, onClose }: { items: DerivedRow[]; bomE
             </div>
           </div>
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <button onClick={handleCsvExport} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.7)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '6px', padding: '7px 14px', cursor: 'pointer' }}>
+              <Download size={13} /> CSV
+            </button>
+            <button onClick={handleExcelExport} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', background: 'rgba(21,128,61,0.2)', color: '#4ade80', border: '1px solid rgba(21,128,61,0.3)', borderRadius: '6px', padding: '7px 14px', cursor: 'pointer' }}>
+              <Download size={13} /> Excel
+            </button>
             <button onClick={handlePrint} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', background: '#0284c7', color: 'white', border: 'none', borderRadius: '6px', padding: '7px 14px', cursor: 'pointer' }}>
-              <Printer size={13} /> Print / Save PDF
+              <Printer size={13} /> Print / PDF
             </button>
             <button onClick={onClose} style={{ color: 'rgba(255,255,255,0.5)', background: 'none', border: 'none', cursor: 'pointer', padding: '4px' }}>
               <X size={16} />
@@ -243,6 +340,7 @@ function ReportModal({ items, bomEntries, onClose }: { items: DerivedRow[]; bomE
                 <tr>
                   <th style={{ width: '150px' }}>Product ID</th>
                   <th>Description</th>
+                  <th style={{ width: '120px' }}>Bin Location</th>
                   <th className="r">Qty to Restock (4wk)</th>
                 </tr>
               </thead>
@@ -251,6 +349,7 @@ function ReportModal({ items, bomEntries, onClose }: { items: DerivedRow[]; bomE
                   <tr key={r.product_id}>
                     <td style={{ fontFamily: 'monospace' }}>{r.product_id}</td>
                     <td>{r.product_name ?? '—'}</td>
+                    <td style={{ fontFamily: 'monospace', fontSize: 10, color: '#555' }}>{r.bin_locations ?? '—'}</td>
                     <td className="r qty">{fmt(r.qtyToRestock)}</td>
                   </tr>
                 ))}
@@ -263,10 +362,16 @@ function ReportModal({ items, bomEntries, onClose }: { items: DerivedRow[]; bomE
                 </div>
                 {allBreakdownLines.map(({ item, line }) => (
                   <div key={item.product_id + line.displaySku} style={{ border: '1px solid #e5e7eb', borderRadius: 6, marginBottom: 10, overflow: 'hidden' }}>
-                    <div style={{ background: '#f3f4f6', padding: '8px 12px', display: 'flex', gap: 16, alignItems: 'baseline' }}>
+                    <div style={{ background: '#f3f4f6', padding: '8px 12px', display: 'flex', gap: 16, alignItems: 'baseline', flexWrap: 'wrap' }}>
                       <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 12, color: '#1d4ed8' }}>{line.displaySku}</span>
+                      {packBinMap.get(line.displaySku.toUpperCase()) && (
+                        <span style={{ fontSize: 10, background: '#dbeafe', color: '#1e40af', borderRadius: 4, padding: '1px 6px', fontFamily: 'monospace' }}>
+                          📦 {packBinMap.get(line.displaySku.toUpperCase())}
+                        </span>
+                      )}
                       <span style={{ fontSize: 10, color: '#555' }}>
                         Break <strong>{line.packsToBreak}</strong> pack{line.packsToBreak !== 1 ? 's' : ''} → yields <strong>{line.singlesYielded}</strong>× {item.product_id}
+                        {item.bin_locations && <span style={{ marginLeft: 8, background: '#d1fae5', color: '#065f46', borderRadius: 4, padding: '1px 6px', fontFamily: 'monospace' }}>→ {item.bin_locations}</span>}
                       </span>
                     </div>
                     {line.recovered.length > 0 && (
@@ -323,6 +428,7 @@ function ReportModal({ items, bomEntries, onClose }: { items: DerivedRow[]; bomE
 
 export default function EcomRestockPanel() {
   const [rows, setRows] = useState<RestockRow[]>([])
+  const [packBinMap, setPackBinMap] = useState<Map<string, string>>(new Map())
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showReport, setShowReport] = useState(false)
@@ -338,6 +444,13 @@ export default function EcomRestockPanel() {
       const res = await fetch('/api/ecom-restock')
       const data = await res.json()
       setRows(data.rows ?? [])
+      if (data.packBins) {
+        const m = new Map<string, string>()
+        ;(data.packBins as { product_id: string; bin_locations: string | null }[]).forEach(r => {
+          if (r.bin_locations) m.set(r.product_id.toUpperCase(), r.bin_locations)
+        })
+        setPackBinMap(m)
+      }
       if (data.error) setError(data.error)
     } catch (e) {
       setError(String(e))
@@ -406,7 +519,7 @@ export default function EcomRestockPanel() {
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden p-4 gap-4">
-      {showReport && <ReportModal items={needsRestock} bomEntries={bomEntries} onClose={() => setShowReport(false)} />}
+      {showReport && <ReportModal items={needsRestock} bomEntries={bomEntries} packBinMap={packBinMap} onClose={() => setShowReport(false)} />}
 
         {/* Header */}
         <div className="flex items-center justify-between">
