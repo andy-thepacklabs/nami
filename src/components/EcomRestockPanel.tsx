@@ -103,8 +103,10 @@ function buildBreakdown(items: DerivedRow[], bomEntries: BomEntry[]): Map<string
   const result = new Map<string, BreakdownLine[]>()
   for (const item of items) {
     const key = item.product_id.trim().toUpperCase()
-    // Only break display packs where qty > 1 (skip bundles/kits that contain just 1 single)
-    const sources = (componentToParents.get(key) ?? []).filter(s => s.qty > 1)
+    const DISPLAY_PACK_SUFFIXES = ['-10PK', '-8PK', '-6PK', '-5PK']
+    const sources = (componentToParents.get(key) ?? []).filter(s =>
+      DISPLAY_PACK_SUFFIXES.some(suffix => s.parent.toUpperCase().endsWith(suffix))
+    )
     if (sources.length === 0) continue
     const lines: BreakdownLine[] = sources.map(src => {
       const packsToBreak = Math.ceil(item.qtyToRestock / src.qty)
