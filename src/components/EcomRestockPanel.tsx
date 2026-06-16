@@ -61,36 +61,31 @@ interface BreakdownLine {
 }
 
 function buildBreakdown(items: DerivedRow[], bomEntries: BomEntry[]): Map<string, BreakdownLine[]> {
-  // parent → all its components
   const parentToComponents = new Map<string, { component: string; qty: number }[]>()
-  // component → which parents produce it
   const componentToParents = new Map<string, { parent: string; qty: number }[]>()
 
   for (const b of bomEntries) {
-    if (!b.sku || !b.component) continue
-    if (!parentToComponents.has(b.sku)) parentToComponents.set(b.sku, [])
-    parentToComponents.get(b.sku)!.push({ component: b.component, qty: b.qty })
-    if (!componentToParents.has(b.component)) componentToParents.set(b.component, [])
-    componentToParents.get(b.component)!.push({ parent: b.sku, qty: b.qty })
+    const parent = b.sku?.trim().toUpperCase()
+    const child  = b.component?.trim().toUpperCase()
+    if (!parent || !child || !b.qty) continue
+    if (!parentToComponents.has(parent)) parentToComponents.set(parent, [])
+    parentToComponents.get(parent)!.push({ component: b.component.trim(), qty: b.qty })
+    if (!componentToParents.has(child)) componentToParents.set(child, [])
+    componentToParents.get(child)!.push({ parent: b.sku.trim(), qty: b.qty })
   }
 
-  // For each restock item, find display packs that yield it
   const result = new Map<string, BreakdownLine[]>()
   for (const item of items) {
-    const sources = componentToParents.get(item.product_id) ?? []
+    const key = item.product_id.trim().toUpperCase()
+    const sources = componentToParents.get(key) ?? []
     if (sources.length === 0) continue
     const lines: BreakdownLine[] = sources.map(src => {
       const packsToBreak = Math.ceil(item.qtyToRestock / src.qty)
-      const allComponents = parentToComponents.get(src.parent) ?? []
+      const allComponents = parentToComponents.get(src.parent.trim().toUpperCase()) ?? []
       const recovered = allComponents
-        .filter(c => c.component !== item.product_id)
+        .filter(c => c.component.trim().toUpperCase() !== key)
         .map(c => ({ component: c.component, totalQty: c.qty * packsToBreak }))
-      return {
-        displaySku: src.parent,
-        packsToBreak,
-        singlesYielded: src.qty * packsToBreak,
-        recovered,
-      }
+      return { displaySku: src.parent, packsToBreak, singlesYielded: src.qty * packsToBreak, recovered }
     })
     result.set(item.product_id, lines)
   }
