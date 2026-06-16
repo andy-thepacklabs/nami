@@ -213,58 +213,8 @@ export default function EcomRestockPanel() {
   const ok = tableRows.filter(r => r.qtyToRestock === 0)
 
   return (
-    <div className="flex-1 flex overflow-hidden">
+    <div className="flex-1 flex flex-col overflow-hidden p-4 gap-4">
       {showReport && <ReportModal items={needsRestock} bomEntries={bomEntries} onClose={() => setShowReport(false)} />}
-
-      {/* LEFT — BOM Upload sidebar */}
-      <div className="w-52 shrink-0 border-r border-white/10 flex flex-col p-4 gap-4">
-        <div>
-          <p className="text-white/50 text-[10px] font-semibold uppercase tracking-widest mb-3">Bill of Materials</p>
-
-          {!bomFileName ? (
-            <label className="flex flex-col items-center justify-center gap-2 border-2 border-dashed border-white/15 hover:border-sky-500/50 rounded-lg p-6 cursor-pointer transition-colors group">
-              <Upload className="w-6 h-6 text-white/25 group-hover:text-sky-400 transition-colors" />
-              <span className="text-white/30 text-xs text-center leading-relaxed group-hover:text-white/50 transition-colors">
-                Click to upload<br />BOM CSV
-              </span>
-              <input type="file" accept=".csv" className="hidden" onChange={handleBomUpload} />
-            </label>
-          ) : (
-            <div className="bg-white/5 border border-white/10 rounded-lg p-3 flex flex-col gap-2">
-              <div className="flex items-start gap-2">
-                <CheckCircle2 className="w-3.5 h-3.5 text-green-400 shrink-0 mt-0.5" />
-                <span className="text-white/70 text-xs break-all leading-tight">{bomFileName}</span>
-              </div>
-              <p className="text-white/35 text-[10px]">{bomEntries.length} entries loaded</p>
-              <button
-                onClick={() => { setBomFileName(null); setBomEntries([]) }}
-                className="flex items-center gap-1 text-[10px] text-red-400/60 hover:text-red-400 transition-colors"
-              >
-                <Trash2 className="w-3 h-3" /> Remove
-              </button>
-            </div>
-          )}
-        </div>
-
-        {bomEntries.length > 0 && (
-          <div className="flex-1 overflow-auto">
-            <p className="text-white/30 text-[10px] uppercase tracking-wider mb-2">Preview</p>
-            <div className="flex flex-col gap-1">
-              {bomEntries.slice(0, 50).map((b, i) => (
-                <div key={i} className="text-[10px] text-white/40 border-b border-white/5 pb-1">
-                  <span className="text-white/65 font-mono">{b.sku}</span>
-                  {b.component && <span className="text-white/25"> · {b.component}</span>}
-                  <span className="text-sky-400 ml-1">×{b.qty}</span>
-                </div>
-              ))}
-              {bomEntries.length > 50 && <p className="text-white/20 text-[10px]">+{bomEntries.length - 50} more…</p>}
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* RIGHT — main table area */}
-      <div className="flex-1 flex flex-col overflow-hidden p-4 gap-4">
 
         {/* Header */}
         <div className="flex items-center justify-between">
@@ -273,6 +223,23 @@ export default function EcomRestockPanel() {
             <p className="text-white/40 text-xs mt-0.5">-01 SKUs · Restock Point = 1-week supply · Qty to Restock targets 4-week supply</p>
           </div>
           <div className="flex items-center gap-2">
+            {/* BOM Upload */}
+            {!bomFileName ? (
+              <label className="flex items-center gap-1.5 text-xs text-white/60 hover:text-white border border-white/10 hover:border-white/20 rounded px-3 py-1.5 transition-colors cursor-pointer">
+                <Upload className="w-3.5 h-3.5" />
+                Upload BOM
+                <input type="file" accept=".csv" className="hidden" onChange={handleBomUpload} />
+              </label>
+            ) : (
+              <div className="flex items-center gap-1.5 text-xs text-green-400 border border-green-600/30 bg-green-600/10 rounded px-3 py-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                BOM loaded
+                <button onClick={() => { setBomFileName(null); setBomEntries([]) }} className="ml-1 text-white/30 hover:text-white/60">
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            )}
+
             {needsRestock.length > 0 && (
               <button
                 onClick={() => setShowReport(true)}
@@ -366,7 +333,6 @@ export default function EcomRestockPanel() {
             </table>
           </div>
         )}
-      </div>
     </div>
   )
 }
