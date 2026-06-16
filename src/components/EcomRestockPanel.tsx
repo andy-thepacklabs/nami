@@ -15,6 +15,12 @@ interface DerivedRow extends RestockRow {
   qtyToRestock: number
 }
 
+interface BomEntry {
+  sku: string
+  component: string
+  qty: number
+}
+
 function fmt(n: number) {
   return n.toLocaleString('en-US', { maximumFractionDigits: 1 })
 }
@@ -26,12 +32,6 @@ function genTicketNumber() {
   const dd = String(now.getDate()).padStart(2, '0')
   const hhmm = String(now.getHours()).padStart(2, '0') + String(now.getMinutes()).padStart(2, '0')
   return `RST-${yy}${mm}${dd}-${hhmm}`
-}
-
-interface BomEntry {
-  sku: string
-  component: string
-  qty: number
 }
 
 function parseBomCsv(text: string): BomEntry[] {
@@ -68,8 +68,7 @@ function ReportModal({ items, onClose }: { items: DerivedRow[]; onClose: () => v
     setBomFileName(file.name)
     const reader = new FileReader()
     reader.onload = ev => {
-      const text = ev.target?.result as string
-      setBomEntries(parseBomCsv(text))
+      setBomEntries(parseBomCsv(ev.target?.result as string))
     }
     reader.readAsText(file)
   }
@@ -79,198 +78,151 @@ function ReportModal({ items, onClose }: { items: DerivedRow[]; onClose: () => v
     if (!content) return
     const win = window.open('', '_blank')
     if (!win) return
-    win.document.write(`
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>Restock Ticket ${ticketNumber.current}</title>
-          <style>
-            * { box-sizing: border-box; margin: 0; padding: 0; }
-            body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 12px; color: #111; padding: 32px; }
-            h1 { font-size: 18px; font-weight: 700; margin-bottom: 16px; }
-            .meta { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 24px; padding: 14px 16px; background: #f3f4f6; border-radius: 6px; border: 1px solid #e5e7eb; }
-            .meta-item label { display: block; font-size: 9px; text-transform: uppercase; letter-spacing: 0.06em; color: #888; margin-bottom: 3px; }
-            .meta-item span { font-size: 13px; font-weight: 600; color: #111; }
-            table { width: 100%; border-collapse: collapse; }
-            th { background: #f3f4f6; text-align: left; padding: 8px 10px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: #555; border-bottom: 2px solid #e5e7eb; }
-            th.r, td.r { text-align: right; }
-            td { padding: 8px 10px; border-bottom: 1px solid #e5e7eb; font-size: 11px; }
-            tr:nth-child(even) td { background: #f9fafb; }
-            .qty { font-weight: 700; color: #dc2626; }
-            .footer { margin-top: 20px; font-size: 10px; color: #999; }
-            @media print { body { padding: 16px; } }
-          </style>
-        </head>
-        <body>${content}</body>
-      </html>
-    `)
+    win.document.write(`<!DOCTYPE html><html><head>
+      <title>Restock Ticket ${ticketNumber.current}</title>
+      <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 12px; color: #111; padding: 32px; }
+        h1 { font-size: 18px; font-weight: 700; margin-bottom: 16px; }
+        .meta { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 24px; padding: 14px 16px; background: #f3f4f6; border-radius: 6px; border: 1px solid #e5e7eb; }
+        .meta-item label { display: block; font-size: 9px; text-transform: uppercase; letter-spacing: 0.06em; color: #888; margin-bottom: 3px; }
+        .meta-item span { font-size: 13px; font-weight: 600; color: #111; }
+        table { width: 100%; border-collapse: collapse; }
+        th { background: #f3f4f6; text-align: left; padding: 8px 10px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: #555; border-bottom: 2px solid #e5e7eb; }
+        th.r, td.r { text-align: right; }
+        td { padding: 8px 10px; border-bottom: 1px solid #e5e7eb; font-size: 11px; }
+        tr:nth-child(even) td { background: #f9fafb; }
+        .qty { font-weight: 700; color: #dc2626; }
+        .footer { margin-top: 20px; font-size: 10px; color: #999; }
+        @media print { body { padding: 16px; } }
+      </style>
+    </head><body>${content}</body></html>`)
     win.document.close()
     win.focus()
     win.print()
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-      <div className="bg-[#1a1f2e] border border-white/10 rounded-xl shadow-2xl w-full max-w-5xl h-[88vh] flex flex-col">
-        {/* Modal header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-white/10">
+    <div style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.7)', padding: '16px' }}>
+      <div style={{ background: '#1a1f2e', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', width: '100%', maxWidth: '900px', height: '85vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 25px 50px rgba(0,0,0,0.5)' }}>
+
+        {/* Header */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: '1px solid rgba(255,255,255,0.1)', flexShrink: 0 }}>
           <div>
-            <h2 className="text-white font-semibold text-base">Restock Report</h2>
-            <p className="text-white/40 text-xs mt-0.5">{items.length} items · Ticket {ticketNumber.current}</p>
+            <div style={{ color: 'white', fontWeight: 600, fontSize: '15px' }}>Restock Report</div>
+            <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '11px', marginTop: '2px' }}>{items.length} items · Ticket {ticketNumber.current}</div>
           </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={handlePrint}
-              className="flex items-center gap-1.5 text-xs bg-sky-600 hover:bg-sky-500 text-white rounded px-3 py-1.5 transition-colors"
-            >
-              <Printer className="w-3.5 h-3.5" />
-              Print / Save PDF
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <button onClick={handlePrint} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', background: '#0284c7', color: 'white', border: 'none', borderRadius: '6px', padding: '6px 12px', cursor: 'pointer' }}>
+              <Printer size={13} /> Print / Save PDF
             </button>
-            <button
-              onClick={onClose}
-              className="text-white/40 hover:text-white/80 p-1.5 rounded transition-colors"
-            >
-              <X className="w-4 h-4" />
+            <button onClick={onClose} style={{ color: 'rgba(255,255,255,0.4)', background: 'none', border: 'none', cursor: 'pointer', padding: '4px' }}>
+              <X size={16} />
             </button>
           </div>
         </div>
 
-        {/* Body: left BOM panel + right report */}
-        <div className="flex flex-1 overflow-hidden">
+        {/* Body row */}
+        <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
 
           {/* LEFT — BOM Upload */}
-          <div className="w-60 shrink-0 border-r border-white/10 flex flex-col p-4 gap-4">
-            <div>
-              <p className="text-white/60 text-xs font-semibold uppercase tracking-wider mb-3">Bill of Materials</p>
-
-              {!bomFileName ? (
-                <label className="flex flex-col items-center justify-center gap-2 border-2 border-dashed border-white/10 hover:border-sky-500/40 rounded-lg p-5 cursor-pointer transition-colors group">
-                  <Upload className="w-6 h-6 text-white/20 group-hover:text-sky-400 transition-colors" />
-                  <span className="text-white/30 text-xs text-center group-hover:text-white/50 transition-colors">Upload BOM CSV</span>
-                  <input type="file" accept=".csv" className="hidden" onChange={handleBomUpload} />
-                </label>
-              ) : (
-                <div className="bg-white/5 border border-white/10 rounded-lg p-3 flex flex-col gap-2">
-                  <div className="flex items-start gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-green-400 shrink-0 mt-0.5" />
-                    <span className="text-white/70 text-xs break-all">{bomFileName}</span>
-                  </div>
-                  <p className="text-white/40 text-[10px]">{bomEntries.length} entries loaded</p>
-                  <button
-                    onClick={() => { setBomFileName(null); setBomEntries([]) }}
-                    className="flex items-center gap-1 text-[10px] text-red-400/60 hover:text-red-400 transition-colors mt-1"
-                  >
-                    <Trash2 className="w-3 h-3" /> Remove
-                  </button>
-                </div>
-              )}
+          <div style={{ width: '220px', flexShrink: 0, borderRight: '1px solid rgba(255,255,255,0.1)', display: 'flex', flexDirection: 'column', padding: '16px', gap: '12px', overflowY: 'auto' }}>
+            <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+              Bill of Materials
             </div>
 
-            {bomEntries.length > 0 && (
-              <div className="flex-1 overflow-auto">
-                <p className="text-white/40 text-[10px] uppercase tracking-wider mb-2">Preview</p>
-                <div className="flex flex-col gap-1">
-                  {bomEntries.slice(0, 30).map((b, i) => (
-                    <div key={i} className="text-[10px] text-white/50 border-b border-white/5 pb-1">
-                      <span className="text-white/70 font-mono">{b.sku}</span>
-                      {b.component && <span className="text-white/30"> · {b.component}</span>}
-                      <span className="text-sky-400 ml-1">×{b.qty}</span>
-                    </div>
-                  ))}
-                  {bomEntries.length > 30 && (
-                    <p className="text-white/20 text-[10px]">+{bomEntries.length - 30} more…</p>
-                  )}
+            {!bomFileName ? (
+              <label style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '8px', border: '2px dashed rgba(255,255,255,0.12)', borderRadius: '8px', padding: '24px 12px', cursor: 'pointer', textAlign: 'center' }}>
+                <Upload size={22} color="rgba(255,255,255,0.25)" />
+                <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: '11px' }}>Upload BOM CSV</span>
+                <input type="file" accept=".csv" style={{ display: 'none' }} onChange={handleBomUpload} />
+              </label>
+            ) : (
+              <div style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '10px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <div style={{ display: 'flex', gap: '6px', alignItems: 'flex-start' }}>
+                  <CheckCircle2 size={14} color="#4ade80" style={{ flexShrink: 0, marginTop: '1px' }} />
+                  <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: '11px', wordBreak: 'break-all' }}>{bomFileName}</span>
                 </div>
+                <div style={{ color: 'rgba(255,255,255,0.35)', fontSize: '10px' }}>{bomEntries.length} entries loaded</div>
+                <button onClick={() => { setBomFileName(null); setBomEntries([]) }} style={{ display: 'flex', alignItems: 'center', gap: '4px', color: 'rgba(248,113,113,0.7)', background: 'none', border: 'none', cursor: 'pointer', fontSize: '10px', padding: 0 }}>
+                  <Trash2 size={11} /> Remove
+                </button>
+              </div>
+            )}
+
+            {bomEntries.length > 0 && (
+              <div style={{ flex: 1, overflowY: 'auto' }}>
+                <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '10px', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Preview</div>
+                {bomEntries.slice(0, 40).map((b, i) => (
+                  <div key={i} style={{ fontSize: '10px', color: 'rgba(255,255,255,0.45)', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '4px', marginBottom: '4px' }}>
+                    <span style={{ color: 'rgba(255,255,255,0.7)', fontFamily: 'monospace' }}>{b.sku}</span>
+                    {b.component && <span style={{ color: 'rgba(255,255,255,0.25)' }}> · {b.component}</span>}
+                    <span style={{ color: '#38bdf8', marginLeft: '4px' }}>×{b.qty}</span>
+                  </div>
+                ))}
+                {bomEntries.length > 40 && <div style={{ color: 'rgba(255,255,255,0.2)', fontSize: '10px' }}>+{bomEntries.length - 40} more…</div>}
               </div>
             )}
           </div>
 
-          {/* RIGHT — Fields + Printable report */}
-          <div className="flex-1 flex flex-col overflow-hidden">
+          {/* RIGHT — Fields + Report */}
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+
             {/* Fields */}
-            <div className="px-5 pt-4 pb-3 grid grid-cols-3 gap-3 border-b border-white/10">
-              <div className="flex flex-col gap-1">
-                <label className="text-white/40 text-[10px] uppercase tracking-wider">Department</label>
-                <input
-                  value={department}
-                  onChange={e => setDepartment(e.target.value)}
-                  placeholder="e.g. Inventory Control"
-                  className="bg-white/5 border border-white/10 rounded px-3 py-1.5 text-sm text-white placeholder-white/20 focus:outline-none focus:border-sky-500/50"
-                />
-              </div>
-              <div className="flex flex-col gap-1">
-                <label className="text-white/40 text-[10px] uppercase tracking-wider">Requested By</label>
-                <input
-                  value={name}
-                  onChange={e => setName(e.target.value)}
-                  placeholder="Your name"
-                  className="bg-white/5 border border-white/10 rounded px-3 py-1.5 text-sm text-white placeholder-white/20 focus:outline-none focus:border-sky-500/50"
-                />
-              </div>
-              <div className="flex flex-col gap-1">
-                <label className="text-white/40 text-[10px] uppercase tracking-wider">Fulfill By</label>
-                <input
-                  value={fulfillBy}
-                  onChange={e => setFulfillBy(e.target.value)}
-                  placeholder="Assigned to"
-                  className="bg-white/5 border border-white/10 rounded px-3 py-1.5 text-sm text-white placeholder-white/20 focus:outline-none focus:border-sky-500/50"
-                />
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px', padding: '14px 20px', borderBottom: '1px solid rgba(255,255,255,0.1)', flexShrink: 0 }}>
+              {[
+                { label: 'Department', value: department, set: setDepartment, placeholder: 'Inventory Control' },
+                { label: 'Requested By', value: name, set: setName, placeholder: 'Your name' },
+                { label: 'Fulfill By', value: fulfillBy, set: setFulfillBy, placeholder: 'Assigned to' },
+              ].map(f => (
+                <div key={f.label} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <label style={{ color: 'rgba(255,255,255,0.35)', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.07em' }}>{f.label}</label>
+                  <input
+                    value={f.value}
+                    onChange={e => f.set(e.target.value)}
+                    placeholder={f.placeholder}
+                    style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', padding: '6px 10px', color: 'white', fontSize: '13px', outline: 'none' }}
+                  />
+                </div>
+              ))}
+            </div>
+
+            {/* Printable area */}
+            <div style={{ flex: 1, overflowY: 'auto', padding: '20px' }}>
+              <div ref={printRef}>
+                <h1>Ecom Single Restock</h1>
+                <div className="meta">
+                  <div className="meta-item"><label>Ticket #</label><span>{ticketNumber.current}</span></div>
+                  <div className="meta-item"><label>Department</label><span>{department || '—'}</span></div>
+                  <div className="meta-item"><label>Requested By</label><span>{name || '—'}</span></div>
+                  <div className="meta-item"><label>Fulfill By</label><span>{fulfillBy || '—'}</span></div>
+                  <div className="meta-item"><label>Date</label><span>{date}</span></div>
+                  <div className="meta-item"><label>Items</label><span>{items.length}</span></div>
+                </div>
+                <table>
+                  <thead>
+                    <tr>
+                      <th style={{ width: '150px' }}>Product ID</th>
+                      <th>Description</th>
+                      <th className="r">Qty to Restock (4wk)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {items.map(r => (
+                      <tr key={r.product_id}>
+                        <td style={{ fontFamily: 'monospace' }}>{r.product_id}</td>
+                        <td>{r.product_name ?? '—'}</td>
+                        <td className="r qty">{fmt(r.qtyToRestock)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <p className="footer">Nami · Ecom Single Restock · {ticketNumber.current} · {date}</p>
               </div>
             </div>
 
-            {/* Printable content */}
-            <div className="flex-1 overflow-auto p-5">
-          <div ref={printRef}>
-            <h1>Ecom Single Restock</h1>
-            <div className="meta">
-              <div className="meta-item">
-                <label>Ticket #</label>
-                <span>{ticketNumber.current}</span>
-              </div>
-              <div className="meta-item">
-                <label>Department</label>
-                <span>{department || '—'}</span>
-              </div>
-              <div className="meta-item">
-                <label>Requested By</label>
-                <span>{name || '—'}</span>
-              </div>
-              <div className="meta-item">
-                <label>Fulfill By</label>
-                <span>{fulfillBy || '—'}</span>
-              </div>
-              <div className="meta-item">
-                <label>Date</label>
-                <span>{date}</span>
-              </div>
-              <div className="meta-item">
-                <label>Items</label>
-                <span>{items.length}</span>
-              </div>
-            </div>
-            <table>
-              <thead>
-                <tr>
-                  <th style={{ width: '150px' }}>Product ID</th>
-                  <th>Description</th>
-                  <th className="r">Qty to Restock (4wk)</th>
-                </tr>
-              </thead>
-              <tbody>
-                {items.map(r => (
-                  <tr key={r.product_id}>
-                    <td style={{ fontFamily: 'monospace' }}>{r.product_id}</td>
-                    <td>{r.product_name ?? '—'}</td>
-                    <td className="r qty">{fmt(r.qtyToRestock)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <p className="footer">Nami · Ecom Single Restock · {ticketNumber.current} · {date}</p>
           </div>
         </div>
-          </div>{/* end right panel */}
-        </div>{/* end body */}
       </div>
     </div>
   )
