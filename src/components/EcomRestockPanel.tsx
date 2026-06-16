@@ -53,26 +53,13 @@ function parseBomCsv(text: string): BomEntry[] {
   })
 }
 
-function ReportModal({ items, onClose }: { items: DerivedRow[]; onClose: () => void }) {
+function ReportModal({ items, bomEntries, onClose }: { items: DerivedRow[]; bomEntries: BomEntry[]; onClose: () => void }) {
   const printRef = useRef<HTMLDivElement>(null)
   const [department, setDepartment] = useState('Inventory Control')
   const [name, setName] = useState('Andy Nguyen')
   const [fulfillBy, setFulfillBy] = useState('')
-  const [bomEntries, setBomEntries] = useState<BomEntry[]>([])
-  const [bomFileName, setBomFileName] = useState<string | null>(null)
   const ticketNumber = useRef(genTicketNumber())
   const date = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
-
-  function handleBomUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
-    setBomFileName(file.name)
-    const reader = new FileReader()
-    reader.onload = ev => {
-      setBomEntries(parseBomCsv(ev.target?.result as string))
-    }
-    reader.readAsText(file)
-  }
 
   function handlePrint() {
     const content = printRef.current?.innerHTML
@@ -104,8 +91,8 @@ function ReportModal({ items, onClose }: { items: DerivedRow[]; onClose: () => v
   }
 
   return createPortal(
-    <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.7)', padding: '16px' }}>
-      <div style={{ background: '#1a1f2e', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', width: '100%', maxWidth: '900px', height: '85vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 25px 50px rgba(0,0,0,0.5)' }}>
+    <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.75)', padding: '16px' }}>
+      <div style={{ background: '#1a1f2e', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '12px', width: '100%', maxWidth: '820px', height: '85vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 25px 60px rgba(0,0,0,0.6)' }}>
 
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: '1px solid rgba(255,255,255,0.1)', flexShrink: 0 }}>
@@ -114,116 +101,67 @@ function ReportModal({ items, onClose }: { items: DerivedRow[]; onClose: () => v
             <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '11px', marginTop: '2px' }}>{items.length} items · Ticket {ticketNumber.current}</div>
           </div>
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-            <button onClick={handlePrint} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', background: '#0284c7', color: 'white', border: 'none', borderRadius: '6px', padding: '6px 12px', cursor: 'pointer' }}>
+            <button onClick={handlePrint} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', background: '#0284c7', color: 'white', border: 'none', borderRadius: '6px', padding: '7px 14px', cursor: 'pointer' }}>
               <Printer size={13} /> Print / Save PDF
             </button>
-            <button onClick={onClose} style={{ color: 'rgba(255,255,255,0.4)', background: 'none', border: 'none', cursor: 'pointer', padding: '4px' }}>
+            <button onClick={onClose} style={{ color: 'rgba(255,255,255,0.5)', background: 'none', border: 'none', cursor: 'pointer', padding: '4px' }}>
               <X size={16} />
             </button>
           </div>
         </div>
 
-        {/* Body row */}
-        <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-
-          {/* LEFT — BOM Upload */}
-          <div style={{ width: '220px', flexShrink: 0, borderRight: '1px solid rgba(255,255,255,0.1)', display: 'flex', flexDirection: 'column', padding: '16px', gap: '12px', overflowY: 'auto' }}>
-            <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-              Bill of Materials
+        {/* Fields */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px', padding: '14px 20px', borderBottom: '1px solid rgba(255,255,255,0.1)', flexShrink: 0 }}>
+          {[
+            { label: 'Department', value: department, set: setDepartment },
+            { label: 'Requested By', value: name, set: setName },
+            { label: 'Fulfill By', value: fulfillBy, set: setFulfillBy },
+          ].map(f => (
+            <div key={f.label} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <label style={{ color: 'rgba(255,255,255,0.35)', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.07em' }}>{f.label}</label>
+              <input
+                value={f.value}
+                onChange={e => f.set(e.target.value)}
+                style={{ background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '6px', padding: '6px 10px', color: 'white', fontSize: '13px', outline: 'none', width: '100%' }}
+              />
             </div>
+          ))}
+        </div>
 
-            {!bomFileName ? (
-              <label style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '8px', border: '2px dashed rgba(255,255,255,0.12)', borderRadius: '8px', padding: '24px 12px', cursor: 'pointer', textAlign: 'center' }}>
-                <Upload size={22} color="rgba(255,255,255,0.25)" />
-                <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: '11px' }}>Upload BOM CSV</span>
-                <input type="file" accept=".csv" style={{ display: 'none' }} onChange={handleBomUpload} />
-              </label>
-            ) : (
-              <div style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '10px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <div style={{ display: 'flex', gap: '6px', alignItems: 'flex-start' }}>
-                  <CheckCircle2 size={14} color="#4ade80" style={{ flexShrink: 0, marginTop: '1px' }} />
-                  <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: '11px', wordBreak: 'break-all' }}>{bomFileName}</span>
-                </div>
-                <div style={{ color: 'rgba(255,255,255,0.35)', fontSize: '10px' }}>{bomEntries.length} entries loaded</div>
-                <button onClick={() => { setBomFileName(null); setBomEntries([]) }} style={{ display: 'flex', alignItems: 'center', gap: '4px', color: 'rgba(248,113,113,0.7)', background: 'none', border: 'none', cursor: 'pointer', fontSize: '10px', padding: 0 }}>
-                  <Trash2 size={11} /> Remove
-                </button>
-              </div>
-            )}
-
-            {bomEntries.length > 0 && (
-              <div style={{ flex: 1, overflowY: 'auto' }}>
-                <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '10px', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Preview</div>
-                {bomEntries.slice(0, 40).map((b, i) => (
-                  <div key={i} style={{ fontSize: '10px', color: 'rgba(255,255,255,0.45)', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '4px', marginBottom: '4px' }}>
-                    <span style={{ color: 'rgba(255,255,255,0.7)', fontFamily: 'monospace' }}>{b.sku}</span>
-                    {b.component && <span style={{ color: 'rgba(255,255,255,0.25)' }}> · {b.component}</span>}
-                    <span style={{ color: '#38bdf8', marginLeft: '4px' }}>×{b.qty}</span>
-                  </div>
+        {/* Printable area */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '20px' }}>
+          <div ref={printRef}>
+            <h1>Ecom Single Restock</h1>
+            <div className="meta">
+              <div className="meta-item"><label>Ticket #</label><span>{ticketNumber.current}</span></div>
+              <div className="meta-item"><label>Department</label><span>{department || '—'}</span></div>
+              <div className="meta-item"><label>Requested By</label><span>{name || '—'}</span></div>
+              <div className="meta-item"><label>Fulfill By</label><span>{fulfillBy || '—'}</span></div>
+              <div className="meta-item"><label>Date</label><span>{date}</span></div>
+              <div className="meta-item"><label>Items</label><span>{items.length}</span></div>
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th style={{ width: '150px' }}>Product ID</th>
+                  <th>Description</th>
+                  <th className="r">Qty to Restock (4wk)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map(r => (
+                  <tr key={r.product_id}>
+                    <td style={{ fontFamily: 'monospace' }}>{r.product_id}</td>
+                    <td>{r.product_name ?? '—'}</td>
+                    <td className="r qty">{fmt(r.qtyToRestock)}</td>
+                  </tr>
                 ))}
-                {bomEntries.length > 40 && <div style={{ color: 'rgba(255,255,255,0.2)', fontSize: '10px' }}>+{bomEntries.length - 40} more…</div>}
-              </div>
-            )}
-          </div>
-
-          {/* RIGHT — Fields + Report */}
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-
-            {/* Fields */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px', padding: '14px 20px', borderBottom: '1px solid rgba(255,255,255,0.1)', flexShrink: 0 }}>
-              {[
-                { label: 'Department', value: department, set: setDepartment, placeholder: 'Inventory Control' },
-                { label: 'Requested By', value: name, set: setName, placeholder: 'Your name' },
-                { label: 'Fulfill By', value: fulfillBy, set: setFulfillBy, placeholder: 'Assigned to' },
-              ].map(f => (
-                <div key={f.label} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                  <label style={{ color: 'rgba(255,255,255,0.35)', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.07em' }}>{f.label}</label>
-                  <input
-                    value={f.value}
-                    onChange={e => f.set(e.target.value)}
-                    placeholder={f.placeholder}
-                    style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', padding: '6px 10px', color: 'white', fontSize: '13px', outline: 'none' }}
-                  />
-                </div>
-              ))}
-            </div>
-
-            {/* Printable area */}
-            <div style={{ flex: 1, overflowY: 'auto', padding: '20px' }}>
-              <div ref={printRef}>
-                <h1>Ecom Single Restock</h1>
-                <div className="meta">
-                  <div className="meta-item"><label>Ticket #</label><span>{ticketNumber.current}</span></div>
-                  <div className="meta-item"><label>Department</label><span>{department || '—'}</span></div>
-                  <div className="meta-item"><label>Requested By</label><span>{name || '—'}</span></div>
-                  <div className="meta-item"><label>Fulfill By</label><span>{fulfillBy || '—'}</span></div>
-                  <div className="meta-item"><label>Date</label><span>{date}</span></div>
-                  <div className="meta-item"><label>Items</label><span>{items.length}</span></div>
-                </div>
-                <table>
-                  <thead>
-                    <tr>
-                      <th style={{ width: '150px' }}>Product ID</th>
-                      <th>Description</th>
-                      <th className="r">Qty to Restock (4wk)</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {items.map(r => (
-                      <tr key={r.product_id}>
-                        <td style={{ fontFamily: 'monospace' }}>{r.product_id}</td>
-                        <td>{r.product_name ?? '—'}</td>
-                        <td className="r qty">{fmt(r.qtyToRestock)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                <p className="footer">Nami · Ecom Single Restock · {ticketNumber.current} · {date}</p>
-              </div>
-            </div>
-
+              </tbody>
+            </table>
+            <p className="footer">Nami · Ecom Single Restock · {ticketNumber.current} · {date}</p>
           </div>
         </div>
+
       </div>
     </div>,
     document.body
@@ -235,6 +173,8 @@ export default function EcomRestockPanel() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showReport, setShowReport] = useState(false)
+  const [bomEntries, setBomEntries] = useState<BomEntry[]>([])
+  const [bomFileName, setBomFileName] = useState<string | null>(null)
 
   async function load() {
     setLoading(true)
@@ -253,6 +193,15 @@ export default function EcomRestockPanel() {
 
   useEffect(() => { load() }, [])
 
+  function handleBomUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setBomFileName(file.name)
+    const reader = new FileReader()
+    reader.onload = ev => setBomEntries(parseBomCsv(ev.target?.result as string))
+    reader.readAsText(file)
+  }
+
   const tableRows: DerivedRow[] = rows.map(r => {
     const daily = (r.sales_60d ?? 0) / 60
     const restockPoint = Math.ceil(daily * 7)
@@ -264,109 +213,160 @@ export default function EcomRestockPanel() {
   const ok = tableRows.filter(r => r.qtyToRestock === 0)
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden p-4 gap-4">
-      {showReport && <ReportModal items={needsRestock} onClose={() => setShowReport(false)} />}
+    <div className="flex-1 flex overflow-hidden">
+      {showReport && <ReportModal items={needsRestock} bomEntries={bomEntries} onClose={() => setShowReport(false)} />}
 
-      {/* Header */}
-      <div className="flex items-center justify-between">
+      {/* LEFT — BOM Upload sidebar */}
+      <div className="w-52 shrink-0 border-r border-white/10 flex flex-col p-4 gap-4">
         <div>
-          <h2 className="text-white font-semibold text-base">Ecom Single Restock</h2>
-          <p className="text-white/40 text-xs mt-0.5">-01 SKUs · Restock Point = 1-week supply · Qty to Restock targets 4-week supply</p>
-        </div>
-        <div className="flex items-center gap-2">
-          {needsRestock.length > 0 && (
-            <button
-              onClick={() => setShowReport(true)}
-              className="flex items-center gap-1.5 text-xs bg-sky-600/20 hover:bg-sky-600/30 text-sky-400 border border-sky-600/30 rounded px-3 py-1.5 transition-colors"
-            >
-              <FileText className="w-3.5 h-3.5" />
-              Generate Report ({needsRestock.length})
-            </button>
+          <p className="text-white/50 text-[10px] font-semibold uppercase tracking-widest mb-3">Bill of Materials</p>
+
+          {!bomFileName ? (
+            <label className="flex flex-col items-center justify-center gap-2 border-2 border-dashed border-white/15 hover:border-sky-500/50 rounded-lg p-6 cursor-pointer transition-colors group">
+              <Upload className="w-6 h-6 text-white/25 group-hover:text-sky-400 transition-colors" />
+              <span className="text-white/30 text-xs text-center leading-relaxed group-hover:text-white/50 transition-colors">
+                Click to upload<br />BOM CSV
+              </span>
+              <input type="file" accept=".csv" className="hidden" onChange={handleBomUpload} />
+            </label>
+          ) : (
+            <div className="bg-white/5 border border-white/10 rounded-lg p-3 flex flex-col gap-2">
+              <div className="flex items-start gap-2">
+                <CheckCircle2 className="w-3.5 h-3.5 text-green-400 shrink-0 mt-0.5" />
+                <span className="text-white/70 text-xs break-all leading-tight">{bomFileName}</span>
+              </div>
+              <p className="text-white/35 text-[10px]">{bomEntries.length} entries loaded</p>
+              <button
+                onClick={() => { setBomFileName(null); setBomEntries([]) }}
+                className="flex items-center gap-1 text-[10px] text-red-400/60 hover:text-red-400 transition-colors"
+              >
+                <Trash2 className="w-3 h-3" /> Remove
+              </button>
+            </div>
           )}
-          <button
-            onClick={load}
-            disabled={loading}
-            className="flex items-center gap-1.5 text-xs text-white/60 hover:text-white border border-white/10 hover:border-white/20 rounded px-3 py-1.5 transition-colors"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-            Refresh
-          </button>
         </div>
+
+        {bomEntries.length > 0 && (
+          <div className="flex-1 overflow-auto">
+            <p className="text-white/30 text-[10px] uppercase tracking-wider mb-2">Preview</p>
+            <div className="flex flex-col gap-1">
+              {bomEntries.slice(0, 50).map((b, i) => (
+                <div key={i} className="text-[10px] text-white/40 border-b border-white/5 pb-1">
+                  <span className="text-white/65 font-mono">{b.sku}</span>
+                  {b.component && <span className="text-white/25"> · {b.component}</span>}
+                  <span className="text-sky-400 ml-1">×{b.qty}</span>
+                </div>
+              ))}
+              {bomEntries.length > 50 && <p className="text-white/20 text-[10px]">+{bomEntries.length - 50} more…</p>}
+            </div>
+          </div>
+        )}
       </div>
 
-      {error && (
-        <div className="text-red-400 text-xs bg-red-900/20 border border-red-900/30 rounded px-3 py-2">{error}</div>
-      )}
+      {/* RIGHT — main table area */}
+      <div className="flex-1 flex flex-col overflow-hidden p-4 gap-4">
 
-      {loading && rows.length === 0 ? (
-        <div className="flex-1 flex items-center justify-center text-white/30 text-sm gap-2">
-          <RefreshCw className="w-4 h-4 animate-spin" />
-          Loading…
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-white font-semibold text-base">Ecom Single Restock</h2>
+            <p className="text-white/40 text-xs mt-0.5">-01 SKUs · Restock Point = 1-week supply · Qty to Restock targets 4-week supply</p>
+          </div>
+          <div className="flex items-center gap-2">
+            {needsRestock.length > 0 && (
+              <button
+                onClick={() => setShowReport(true)}
+                className="flex items-center gap-1.5 text-xs bg-sky-600/20 hover:bg-sky-600/30 text-sky-400 border border-sky-600/30 rounded px-3 py-1.5 transition-colors"
+              >
+                <FileText className="w-3.5 h-3.5" />
+                Generate Report ({needsRestock.length})
+              </button>
+            )}
+            <button
+              onClick={load}
+              disabled={loading}
+              className="flex items-center gap-1.5 text-xs text-white/60 hover:text-white border border-white/10 hover:border-white/20 rounded px-3 py-1.5 transition-colors"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+              Refresh
+            </button>
+          </div>
         </div>
-      ) : (
-        <div className="flex-1 overflow-auto rounded-lg border border-white/10">
-          <table className="w-full text-xs border-collapse">
-            <thead className="sticky top-0 z-10">
-              <tr className="bg-[#1a1f2e] border-b border-white/10 text-white/50 text-left">
-                <th className="px-3 py-2.5 font-medium">Product ID</th>
-                <th className="px-3 py-2.5 font-medium">Description</th>
-                <th className="px-3 py-2.5 font-medium text-right">Stock QoH</th>
-                <th className="px-3 py-2.5 font-medium text-right">Last 60D Sale</th>
-                <th className="px-3 py-2.5 font-medium text-right">Restock Point (1wk)</th>
-                <th className="px-3 py-2.5 font-medium text-right">Qty to Restock (4wk)</th>
-              </tr>
-            </thead>
-            <tbody>
-              {needsRestock.length > 0 && (
-                <>
-                  <tr className="bg-red-950/30">
-                    <td colSpan={6} className="px-3 py-1.5 text-red-400/70 text-[10px] font-semibold uppercase tracking-wider">
-                      Needs Restock ({needsRestock.length})
-                    </td>
-                  </tr>
-                  {needsRestock.map(r => (
-                    <tr key={r.product_id} className="border-b border-white/5 hover:bg-white/5 bg-red-950/10">
-                      <td className="px-3 py-2 font-mono text-white/90">{r.product_id}</td>
-                      <td className="px-3 py-2 text-white/60 max-w-[240px] truncate">{r.product_name ?? '—'}</td>
-                      <td className="px-3 py-2 text-right text-white/80">{fmt(r.qoh)}</td>
-                      <td className="px-3 py-2 text-right text-white/80">{r.sales_60d != null ? fmt(r.sales_60d) : '—'}</td>
-                      <td className="px-3 py-2 text-right text-white/80">{fmt(r.restockPoint)}</td>
-                      <td className="px-3 py-2 text-right font-semibold text-red-400">{fmt(r.qtyToRestock)}</td>
-                    </tr>
-                  ))}
-                </>
-              )}
-              {ok.length > 0 && (
-                <>
-                  <tr className="bg-white/5">
-                    <td colSpan={6} className="px-3 py-1.5 text-white/30 text-[10px] font-semibold uppercase tracking-wider">
-                      OK — Sufficient Stock ({ok.length})
-                    </td>
-                  </tr>
-                  {ok.map(r => (
-                    <tr key={r.product_id} className="border-b border-white/5 hover:bg-white/5 opacity-60">
-                      <td className="px-3 py-2 font-mono text-white/70">{r.product_id}</td>
-                      <td className="px-3 py-2 text-white/50 max-w-[240px] truncate">{r.product_name ?? '—'}</td>
-                      <td className="px-3 py-2 text-right text-white/70">{fmt(r.qoh)}</td>
-                      <td className="px-3 py-2 text-right text-white/70">{r.sales_60d != null ? fmt(r.sales_60d) : '—'}</td>
-                      <td className="px-3 py-2 text-right text-white/70">{fmt(r.restockPoint)}</td>
-                      <td className="px-3 py-2 text-right text-green-500/80">✓</td>
-                    </tr>
-                  ))}
-                </>
-              )}
-              {tableRows.length === 0 && !loading && (
-                <tr>
-                  <td colSpan={6} className="px-3 py-12 text-center text-white/30">
-                    <Package className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                    No data — run a Finale sync first
-                  </td>
+
+        {error && (
+          <div className="text-red-400 text-xs bg-red-900/20 border border-red-900/30 rounded px-3 py-2">{error}</div>
+        )}
+
+        {loading && rows.length === 0 ? (
+          <div className="flex-1 flex items-center justify-center text-white/30 text-sm gap-2">
+            <RefreshCw className="w-4 h-4 animate-spin" />
+            Loading…
+          </div>
+        ) : (
+          <div className="flex-1 overflow-auto rounded-lg border border-white/10">
+            <table className="w-full text-xs border-collapse">
+              <thead className="sticky top-0 z-10">
+                <tr className="bg-[#1a1f2e] border-b border-white/10 text-white/50 text-left">
+                  <th className="px-3 py-2.5 font-medium">Product ID</th>
+                  <th className="px-3 py-2.5 font-medium">Description</th>
+                  <th className="px-3 py-2.5 font-medium text-right">Stock QoH</th>
+                  <th className="px-3 py-2.5 font-medium text-right">Last 60D Sale</th>
+                  <th className="px-3 py-2.5 font-medium text-right">Restock Point (1wk)</th>
+                  <th className="px-3 py-2.5 font-medium text-right">Qty to Restock (4wk)</th>
                 </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      )}
+              </thead>
+              <tbody>
+                {needsRestock.length > 0 && (
+                  <>
+                    <tr className="bg-red-950/30">
+                      <td colSpan={6} className="px-3 py-1.5 text-red-400/70 text-[10px] font-semibold uppercase tracking-wider">
+                        Needs Restock ({needsRestock.length})
+                      </td>
+                    </tr>
+                    {needsRestock.map(r => (
+                      <tr key={r.product_id} className="border-b border-white/5 hover:bg-white/5 bg-red-950/10">
+                        <td className="px-3 py-2 font-mono text-white/90">{r.product_id}</td>
+                        <td className="px-3 py-2 text-white/60 max-w-[240px] truncate">{r.product_name ?? '—'}</td>
+                        <td className="px-3 py-2 text-right text-white/80">{fmt(r.qoh)}</td>
+                        <td className="px-3 py-2 text-right text-white/80">{r.sales_60d != null ? fmt(r.sales_60d) : '—'}</td>
+                        <td className="px-3 py-2 text-right text-white/80">{fmt(r.restockPoint)}</td>
+                        <td className="px-3 py-2 text-right font-semibold text-red-400">{fmt(r.qtyToRestock)}</td>
+                      </tr>
+                    ))}
+                  </>
+                )}
+                {ok.length > 0 && (
+                  <>
+                    <tr className="bg-white/5">
+                      <td colSpan={6} className="px-3 py-1.5 text-white/30 text-[10px] font-semibold uppercase tracking-wider">
+                        OK — Sufficient Stock ({ok.length})
+                      </td>
+                    </tr>
+                    {ok.map(r => (
+                      <tr key={r.product_id} className="border-b border-white/5 hover:bg-white/5 opacity-60">
+                        <td className="px-3 py-2 font-mono text-white/70">{r.product_id}</td>
+                        <td className="px-3 py-2 text-white/50 max-w-[240px] truncate">{r.product_name ?? '—'}</td>
+                        <td className="px-3 py-2 text-right text-white/70">{fmt(r.qoh)}</td>
+                        <td className="px-3 py-2 text-right text-white/70">{r.sales_60d != null ? fmt(r.sales_60d) : '—'}</td>
+                        <td className="px-3 py-2 text-right text-white/70">{fmt(r.restockPoint)}</td>
+                        <td className="px-3 py-2 text-right text-green-500/80">✓</td>
+                      </tr>
+                    ))}
+                  </>
+                )}
+                {tableRows.length === 0 && !loading && (
+                  <tr>
+                    <td colSpan={6} className="px-3 py-12 text-center text-white/30">
+                      <Package className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                      No data — run a Finale sync first
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
