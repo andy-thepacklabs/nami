@@ -111,7 +111,7 @@ function ReportModal({ items, onClose }: { items: DerivedRow[]; onClose: () => v
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-      <div className="bg-[#1a1f2e] border border-white/10 rounded-xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col">
+      <div className="bg-[#1a1f2e] border border-white/10 rounded-xl shadow-2xl w-full max-w-5xl h-[88vh] flex flex-col">
         {/* Modal header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-white/10">
           <div>
