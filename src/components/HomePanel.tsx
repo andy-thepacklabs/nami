@@ -50,7 +50,7 @@ function StatCard({
   )
 }
 
-export default function HomePanel() {
+export default function HomePanel({ onOpenPoClick }: { onOpenPoClick?: () => void }) {
   const [data, setData] = useState<HomeStats | null>(null)
   const [loading, setLoading] = useState(true)
   const [showOos, setShowOos] = useState(false)
@@ -131,8 +131,9 @@ export default function HomePanel() {
           icon={<ShoppingCart className="w-6 h-6" />}
           label="Open POs"
           value="—"
-          sub="Not yet connected"
-          color="text-orange-700"
+          sub="Click to view report"
+          color="text-orange-400"
+          onClick={onOpenPoClick}
         />
         <div className="bg-[#111] border border-orange-900/20 rounded-xl p-5 flex items-start gap-4">
           <div className="text-orange-500 mt-0.5"><Truck className="w-6 h-6" /></div>

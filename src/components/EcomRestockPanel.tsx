@@ -57,28 +57,39 @@ function parseCsvLine(line: string): string[] {
   return cols
 }
 
-function parseBomCsv(text: string): BomEntry[] {
-  // Strip UTF-8 BOM if present
+function parseBomCsv(text: string): { entries: BomEntry[]; error?: string } {
   const clean = text.replace(/^﻿/, '')
   const lines = clean.trim().split(/\r?\n/)
-  if (lines.length < 2) return []
-  const header = parseCsvLine(lines[0]).map(h => h.toLowerCase())
-  const parentIdx = header.findIndex(h => h.includes('parent'))
-  const childIdx  = header.findIndex(h => h.includes('child'))
-  const qtyIdx    = header.findIndex(h => h.includes('bom qty') || (h.includes('qty') && !h.includes('child')))
-  if (parentIdx === -1 || childIdx === -1 || qtyIdx === -1) {
-    console.warn('BOM CSV headers not found. Got:', header)
-    return []
+  if (lines.length < 2) return { entries: [], error: 'File is empty or has only one row' }
+
+  const header = parseCsvLine(lines[0]).map(h => h.toLowerCase().trim())
+
+  const parentIdx = header.findIndex(h =>
+    h.includes('parent') || h === 'product id' || h === 'product_id' || h.includes('sku')
+  )
+  const childIdx = header.findIndex(h =>
+    h.includes('child') || h.includes('component') || h.includes('material')
+  )
+  const qtyIdx = header.findIndex(h =>
+    h.includes('bom qty') || h.includes('bom_qty') ||
+    (h.includes('qty') && !h.includes('child') && !h.includes('component'))
+  )
+
+  if (parentIdx === -1 || childIdx === -1) {
+    return { entries: [], error: `Could not find required columns. Found: [${header.join(', ')}]` }
   }
-  return lines.slice(1).flatMap(line => {
+
+  const entries = lines.slice(1).flatMap(line => {
     if (!line.trim()) return []
     const cols = parseCsvLine(line)
     const sku       = cols[parentIdx]?.trim()
     const component = cols[childIdx]?.trim()
-    const qty       = parseFloat(cols[qtyIdx])
+    const qty       = qtyIdx >= 0 ? parseFloat(cols[qtyIdx]) : 1
     if (!sku || !component || isNaN(qty)) return []
     return [{ sku, component, qty }]
   })
+
+  return { entries }
 }
 
 interface BreakdownLine {
@@ -480,9 +491,9 @@ export default function EcomRestockPanel() {
     const reader = new FileReader()
     reader.onload = async ev => {
       setBomError(null)
-      const entries = parseBomCsv(ev.target?.result as string)
+      const { entries, error: parseError } = parseBomCsv(ev.target?.result as string)
       if (entries.length === 0) {
-        setBomError('Could not parse BOM CSV — check column names (Parent ID, Child ID, BOM Qty)')
+        setBomError(parseError ?? 'No valid rows found in CSV')
         return
       }
       setBomEntries(entries)
@@ -539,7 +550,11 @@ export default function EcomRestockPanel() {
               <div className="flex items-center gap-1.5 text-xs text-green-400 border border-green-600/30 bg-green-600/10 rounded px-3 py-1.5">
                 <CheckCircle2 className="w-3.5 h-3.5" />
                 {bomSaving ? 'Saving…' : `BOM · ${bomEntries.length} entries`}
-                <button onClick={clearBom} className="ml-1 text-white/30 hover:text-white/60" title="Remove BOM">
+                <label className="ml-1 text-white/30 hover:text-white/60 cursor-pointer" title="Replace BOM">
+                  <Upload className="w-3 h-3" />
+                  <input type="file" accept=".csv" className="hidden" onChange={handleBomUpload} />
+                </label>
+                <button onClick={clearBom} className="text-white/30 hover:text-white/60" title="Remove BOM">
                   <X className="w-3 h-3" />
                 </button>
               </div>
