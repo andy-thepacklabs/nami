@@ -55,12 +55,17 @@ export default function HomePanel({ onOpenPoClick }: { onOpenPoClick?: () => voi
   const [loading, setLoading] = useState(true)
   const [showOos, setShowOos] = useState(false)
   const [oosSearch, setOosSearch] = useState('')
+  const [poStats, setPoStats] = useState<{ totalValue: number; poCount: number } | null>(null)
 
   const load = async () => {
     setLoading(true)
     try {
-      const res = await fetch('/api/home/stats')
-      setData(await res.json())
+      const [statsRes, poRes] = await Promise.all([
+        fetch('/api/home/stats'),
+        fetch('/api/open-po-stats'),
+      ])
+      setData(await statsRes.json())
+      setPoStats(await poRes.json())
     } catch (e) { console.error(e) }
     setLoading(false)
   }
@@ -130,8 +135,8 @@ export default function HomePanel({ onOpenPoClick }: { onOpenPoClick?: () => voi
         <StatCard
           icon={<ShoppingCart className="w-6 h-6" />}
           label="Open POs"
-          value="—"
-          sub="Click to view report"
+          value={poStats ? String(poStats.poCount) : '—'}
+          sub={poStats?.totalValue ? `$${poStats.totalValue.toLocaleString('en-US', { maximumFractionDigits: 0 })} incoming · Click to view` : 'Click to view report'}
           color="text-orange-400"
           onClick={onOpenPoClick}
         />

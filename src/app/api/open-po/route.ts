@@ -1,4 +1,15 @@
 import { NextResponse } from 'next/server'
+import { getDb } from '@/lib/db'
+
+function cacheTotal(totalValue: number, poCount: number) {
+  try {
+    const db = getDb()
+    db.exec(`CREATE TABLE IF NOT EXISTS open_po_cache (key TEXT PRIMARY KEY, value TEXT)`)
+    db.prepare(`INSERT OR REPLACE INTO open_po_cache (key, value) VALUES ('total_value', ?)`).run(String(totalValue))
+    db.prepare(`INSERT OR REPLACE INTO open_po_cache (key, value) VALUES ('po_count', ?)`).run(String(poCount))
+    db.prepare(`INSERT OR REPLACE INTO open_po_cache (key, value) VALUES ('updated_at', ?)`).run(new Date().toISOString())
+  } catch { /* non-fatal */ }
+}
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -158,6 +169,8 @@ export async function GET() {
     }
 
     lines.sort((a, b) => a.orderNumber.localeCompare(b.orderNumber))
+    const totalValue = lines.reduce((s, l) => s + l.qtyBackordered * l.unitCost, 0)
+    cacheTotal(totalValue, openPos.length)
     return NextResponse.json({ lines, debug: { openPoCount: openPos.length } })
 
   } catch (err) {
