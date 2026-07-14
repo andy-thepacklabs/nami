@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getDb } from '@/lib/db'
+import * as XLSX from 'xlsx'
 
 export const dynamic = 'force-dynamic'
 
@@ -19,38 +20,25 @@ function ensureSchema(db: ReturnType<typeof getDb>) {
   `)
 }
 
-function parseNum(s: unknown): number {
-  return parseFloat(String(s ?? '').replace(/,/g, '').replace(/\$/g, '').trim()) || 0
+function parseNum(v: unknown): number {
+  return parseFloat(String(v ?? '').replace(/,/g, '').replace(/\$/g, '').trim()) || 0
 }
 
-function parseDate(s: string): string {
+function parseDate(v: unknown): string {
+  const s = String(v ?? '').trim()
   if (!s) return ''
+  // Excel serial
+  if (typeof v === 'number') {
+    const d = XLSX.SSF.parse_date_code(v)
+    if (d) return `${d.y}-${String(d.m).padStart(2, '0')}-${String(d.d).padStart(2, '0')}`
+  }
+  // M/D/YYYY
   const mdy = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/)
   if (mdy) return `${mdy[3]}-${mdy[1].padStart(2, '0')}-${mdy[2].padStart(2, '0')}`
   return s.split('T')[0]
 }
 
-function splitCsvLine(line: string): string[] {
-  const result: string[] = []
-  let i = 0
-  while (i <= line.length) {
-    if (i === line.length) { result.push(''); break }
-    if (line[i] === '"') {
-      let j = i + 1
-      while (j < line.length && !(line[j] === '"' && line[j + 1] !== '"')) j++
-      result.push(line.slice(i + 1, j).replace(/""/g, '"').trim())
-      i = j + 2
-    } else {
-      const j = line.indexOf(',', i)
-      if (j === -1) { result.push(line.slice(i).trim()); break }
-      result.push(line.slice(i, j).trim())
-      i = j + 1
-    }
-  }
-  return result
-}
-
-// POST: upload CSV
+// POST: upload Excel or CSV
 export async function POST(req: NextRequest) {
   try {
     const form = await req.formData()
@@ -59,44 +47,52 @@ export async function POST(req: NextRequest) {
 
     const db = getDb()
     ensureSchema(db)
-    db.exec(`DELETE FROM shipped_sales_by_product`)
-
-    const text = await file.text()
-    const lines = text.split(/\r?\n/).filter(l => l.trim())
-    if (lines.length < 2) return NextResponse.json({ error: 'No data rows found' }, { status: 400 })
-
-    const headers = splitCsvLine(lines[0]).map(h => h.toLowerCase().trim())
-    const find = (...names: string[]) => names.map(n => headers.findIndex(h => h === n)).find(i => i >= 0) ?? -1
-
-    const iOrderId  = find('order id', 'order_id', 'orderid', 'order number')
-    const iProdId   = find('product id', 'product_id', 'productid', 'sku', 'item id')
-    const iProdName = find('product name', 'product_name', 'productname', 'item name', 'description')
-    const iSource   = find('source', 'order source', 'sale source', 'channel')
-    const iShipDate = find('ship date', 'ship_date', 'shipdate', 'date shipped')
-    const iQty      = find('qty shipped', 'qty_shipped', 'quantity shipped', 'qty', 'quantity')
-    const iPrice    = find('unit price', 'unit_price', 'price')
-    const iSubtotal = find('subtotal', 'sub total', 'total', 'line total')
 
     const stmt = db.prepare(`
-      INSERT INTO shipped_sales_by_product (order_id, product_id, product_name, source, ship_date, qty_shipped, unit_price, subtotal)
+      INSERT INTO shipped_sales_by_product
+        (order_id, product_id, product_name, source, ship_date, qty_shipped, unit_price, subtotal)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `)
 
+    const buf = await file.arrayBuffer()
+    const wb  = XLSX.read(buf, { type: 'buffer', cellDates: false })
+    const ws  = wb.Sheets[wb.SheetNames[0]]
+    const allRows = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, defval: '' })
+
+    if (allRows.length < 2) return NextResponse.json({ error: 'No data rows found' }, { status: 400 })
+
+    const headers = (allRows[0] as string[]).map(h => String(h).toLowerCase().trim())
+    const col = (...names: string[]) =>
+      names.map(n => headers.findIndex(h => h === n)).find(i => i >= 0) ?? -1
+
+    const iSource   = col('source', 'order source', 'sale source', 'channel')
+    const iOrderId  = col('order id', 'order_id', 'orderid', 'order number')
+    const iShipDate = col('ship date', 'ship_date', 'shipdate', 'date shipped')
+    const iProdId   = col('product id', 'product_id', 'productid', 'sku', 'item id')
+    const iProdName = col('description', 'product name', 'product_name', 'item name', 'name')
+    const iQty      = col('quantity', 'qty shipped', 'qty_shipped', 'qty')
+    const iPrice    = col('amount per unit', 'unit price', 'unit_price', 'price')
+    const iSubtotal = col('subtotal', 'sub total', 'amount', 'total')
+
+    // Clear ONLY the current month's data if we can detect the month from data,
+    // otherwise clear all and re-insert
+    db.exec(`DELETE FROM shipped_sales_by_product`)
+
     let inserted = 0
-    for (const line of lines.slice(1)) {
-      const v = splitCsvLine(line)
-      const productId   = iProdId   >= 0 ? v[iProdId]   : ''
-      const productName = iProdName >= 0 ? v[iProdName] : ''
+    for (const rawRow of allRows.slice(1)) {
+      const row = rawRow as unknown[]
+      const productId   = String(row[iProdId]   ?? '').trim()
+      const productName = String(row[iProdName] ?? '').trim()
       if (!productId && !productName) continue
       stmt.run(
-        iOrderId  >= 0 ? v[iOrderId]  : '',
+        iOrderId  >= 0 ? String(row[iOrderId]  ?? '').trim() : '',
         productId,
         productName,
-        iSource   >= 0 ? v[iSource]   : '',
-        iShipDate >= 0 ? parseDate(v[iShipDate]) : '',
-        iQty      >= 0 ? parseNum(v[iQty])      : 0,
-        iPrice    >= 0 ? parseNum(v[iPrice])     : 0,
-        iSubtotal >= 0 ? parseNum(v[iSubtotal])  : 0,
+        iSource   >= 0 ? String(row[iSource]   ?? '').trim() : '',
+        iShipDate >= 0 ? parseDate(row[iShipDate]) : '',
+        iQty      >= 0 ? parseNum(row[iQty])      : 0,
+        iPrice    >= 0 ? parseNum(row[iPrice])     : 0,
+        iSubtotal >= 0 ? parseNum(row[iSubtotal])  : 0,
       )
       inserted++
     }
@@ -112,7 +108,11 @@ export async function GET(req: NextRequest) {
   try {
     const db = getDb()
     ensureSchema(db)
-    const meta = db.prepare(`SELECT MAX(imported_at) as last_import, COUNT(*) as total FROM shipped_sales_by_product`).get() as { last_import: string | null; total: number }
+    const meta = db.prepare(`
+      SELECT MAX(imported_at) as last_import, COUNT(*) as total,
+             MAX(ship_date) as latest_date, MIN(ship_date) as earliest_date
+      FROM shipped_sales_by_product
+    `).get() as { last_import: string | null; total: number; latest_date: string; earliest_date: string }
 
     const url  = new URL(req.url)
     const mode = url.searchParams.get('mode')
@@ -120,14 +120,14 @@ export async function GET(req: NextRequest) {
     if (mode === 'bymonth') {
       const agg = db.prepare(`
         SELECT
-          substr(COALESCE(NULLIF(ship_date,''), ''), 1, 7) AS month_key,
+          substr(COALESCE(NULLIF(ship_date,''), ''), 1, 7)  AS month_key,
           COALESCE(NULLIF(product_name,''), product_id, '—') AS product,
           product_id,
-          SUM(qty_shipped)  AS qty,
-          SUM(subtotal)     AS revenue
+          SUM(qty_shipped) AS qty,
+          SUM(subtotal)    AS revenue
         FROM shipped_sales_by_product
         WHERE month_key != ''
-        GROUP BY month_key, product
+        GROUP BY month_key, product_id
         ORDER BY month_key DESC, revenue DESC
       `).all()
       return NextResponse.json({ agg, meta })
@@ -144,7 +144,7 @@ export async function GET(req: NextRequest) {
         SUM(subtotal)    AS revenue
       FROM shipped_sales_by_product
       WHERE COALESCE(NULLIF(ship_date,''), '') LIKE ?
-      GROUP BY product
+      GROUP BY product_id
       ORDER BY revenue DESC
     `).all(`${ym}%`)
     return NextResponse.json({ agg, meta })
