@@ -157,12 +157,39 @@ export async function POST(req: NextRequest) {
   }
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
     const db = getDb()
     ensureSchema(db)
-    const rows = db.prepare(`SELECT * FROM shipped_sales_csv ORDER BY ship_date DESC, order_date DESC`).all()
     const meta = db.prepare(`SELECT MAX(imported_at) as last_import, COUNT(*) as total FROM shipped_sales_csv`).get() as { last_import: string | null; total: number }
+
+    const url  = new URL(req.url)
+    const mode = url.searchParams.get('mode') // 'thismonth' | 'bymonth'
+
+    if (mode === 'bymonth') {
+      // Return pre-aggregated: one row per (month, source)
+      const agg = db.prepare(`
+        SELECT
+          substr(COALESCE(NULLIF(ship_date,''), order_date, ''), 1, 7) AS month_key,
+          customer AS source,
+          COUNT(DISTINCT order_id)                                       AS orders,
+          SUM(subtotal)                                                  AS revenue
+        FROM shipped_sales_csv
+        WHERE month_key != ''
+        GROUP BY month_key, source
+        ORDER BY month_key DESC, revenue DESC
+      `).all()
+      return NextResponse.json({ agg, meta })
+    }
+
+    // Default (thismonth): return only current month's raw rows
+    const now = new Date()
+    const ym  = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+    const rows = db.prepare(`
+      SELECT * FROM shipped_sales_csv
+      WHERE COALESCE(NULLIF(ship_date,''), order_date, '') LIKE ?
+      ORDER BY ship_date DESC, order_date DESC
+    `).all(`${ym}%`)
     return NextResponse.json({ rows, meta })
   } catch (err) {
     return NextResponse.json({ rows: [], error: String(err) }, { status: 500 })

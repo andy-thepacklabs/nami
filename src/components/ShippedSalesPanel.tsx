@@ -48,8 +48,11 @@ function getMonthKey(dateStr: string) {
   return d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
 }
 
+interface AggRow { month_key: string; source: string; orders: number; revenue: number }
+
 export default function ShippedSalesPanel() {
   const [rows, setRows] = useState<SaleRow[]>([])
+  const [agg, setAgg] = useState<AggRow[]>([])
   const [meta, setMeta] = useState<Meta | null>(null)
   const [loading, setLoading] = useState(false)
   const [uploading, setUploading] = useState(false)
@@ -61,10 +64,7 @@ export default function ShippedSalesPanel() {
   const [activeTab, setActiveTab] = useState<'thismonth' | 'bymonth'>('thismonth')
   const fileRef = useRef<HTMLInputElement>(null)
 
-  const NOW = new Date()
-  const THIS_MONTH_KEY = NOW.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
-
-  async function load() {
+  async function loadThisMonth() {
     setLoading(true)
     setError(null)
     try {
@@ -79,7 +79,31 @@ export default function ShippedSalesPanel() {
     }
   }
 
-  useEffect(() => { load() }, [])
+  async function loadByMonth() {
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/shipped-sales-upload?mode=bymonth')
+      const data = await res.json()
+      setAgg(data.agg ?? [])
+      setMeta(data.meta ?? null)
+    } catch (e) {
+      setError(String(e))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function load() {
+    if (activeTab === 'bymonth') await loadByMonth()
+    else await loadThisMonth()
+  }
+
+  useEffect(() => { loadThisMonth() }, [])
+  useEffect(() => {
+    if (activeTab === 'bymonth' && agg.length === 0) loadByMonth()
+    if (activeTab === 'thismonth' && rows.length === 0) loadThisMonth()
+  }, [activeTab])
 
   async function handleSync() {
     setSyncing(true)
@@ -103,7 +127,7 @@ export default function ShippedSalesPanel() {
           const p = await fetch('/api/shipped-sales-sync?progress=1').then(r => r.json())
           if (p.status === 'done') {
             setSyncMsg(`Synced ${p.count.toLocaleString()} orders · ${p.pages} pages · ${p.mode === 'incremental' ? '⚡ incremental' : '🔍 full scan (faster next time)'}`)
-            await load()
+            await loadThisMonth()
             setSyncing(false)
           } else if (p.status === 'error') {
             setError(p.error ?? 'Sync failed')
@@ -144,7 +168,8 @@ export default function ShippedSalesPanel() {
           const p = await fetch('/api/shipped-sales-sync').then(r => r.json())
           if (p.status === 'done') {
             setSyncMsg(`Synced ${p.count.toLocaleString()} orders across Jan–Jun 2026`)
-            await load()
+            setAgg([]) // force reload on next render
+            await loadByMonth()
             setSyncing(false)
           } else if (p.status === 'error') {
             setError(p.error ?? 'Sync failed')
@@ -190,43 +215,18 @@ export default function ShippedSalesPanel() {
     })
   }
 
-  // Pre-tag every row with its month key once (avoids repeated regex in render)
-  const taggedRows = useMemo(() =>
-    rows.map(r => ({ ...r, _monthKey: getMonthKey(r.ship_date || r.order_date) })),
-    [rows]
-  )
-
-  const thisMonthRows = useMemo(() =>
-    taggedRows.filter(r => r._monthKey === THIS_MONTH_KEY),
-    [taggedRows, THIS_MONTH_KEY]
-  )
-
-  const sourceRows = activeTab === 'thismonth' ? thisMonthRows : taggedRows
-
+  // This Month: filter + group client-side (small dataset — only current month rows)
   const filtered = useMemo(() => {
-    if (!search) return sourceRows
+    if (!search) return rows
     const q = search.toLowerCase()
-    return sourceRows.filter(r =>
+    return rows.filter(r =>
       r.order_id.toLowerCase().includes(q) ||
-      (r.customer ?? '').toLowerCase().includes(q) ||
-      (r.product_id ?? '').toLowerCase().includes(q) ||
-      (r.product_name ?? '').toLowerCase().includes(q)
+      (r.customer ?? '').toLowerCase().includes(q)
     )
-  }, [sourceRows, search])
+  }, [rows, search])
 
-  // Group by ship month for By Month view
-  const monthMap = useMemo(() => {
-    const map = new Map<string, typeof taggedRows>()
-    for (const r of filtered) {
-      if (!map.has(r._monthKey)) map.set(r._monthKey, [])
-      map.get(r._monthKey)!.push(r)
-    }
-    return map
-  }, [filtered])
-
-  // Group by source for This Month view
   const sortedSources = useMemo(() => {
-    const bySource = new Map<string, typeof filtered>()
+    const bySource = new Map<string, SaleRow[]>()
     for (const r of filtered) {
       const key = r.customer && r.customer !== '—' ? r.customer : 'Unknown'
       if (!bySource.has(key)) bySource.set(key, [])
@@ -237,27 +237,21 @@ export default function ShippedSalesPanel() {
     )
   }, [filtered])
 
-  // Pre-compute per-month source groupings for By Month view
-  const monthSourceMap = useMemo(() => {
-    const result = new Map<string, { source: string; orders: number; revenue: number }[]>()
-    for (const [month, monthRows] of monthMap.entries()) {
-      const srcMap = new Map<string, { orders: Set<string>; revenue: number }>()
-      for (const r of monthRows) {
-        const src = r.customer || '—'
-        if (!srcMap.has(src)) srcMap.set(src, { orders: new Set(), revenue: 0 })
-        const s = srcMap.get(src)!
-        s.orders.add(r.order_id)
-        s.revenue += r.subtotal
-      }
-      result.set(month, Array.from(srcMap.entries())
-        .map(([source, { orders, revenue }]) => ({ source, orders: orders.size, revenue }))
-        .sort((a, b) => b.revenue - a.revenue)
-      )
+  // By Month: group pre-aggregated rows from server
+  const monthMap = useMemo(() => {
+    const q = search.toLowerCase()
+    const map = new Map<string, AggRow[]>()
+    for (const r of agg) {
+      if (search && !r.source.toLowerCase().includes(q)) continue
+      // Convert YYYY-MM to "Month YYYY" label
+      const [y, m] = r.month_key.split('-').map(Number)
+      const label = new Date(y, m - 1, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+      if (!map.has(label)) map.set(label, [])
+      map.get(label)!.push(r)
     }
-    return result
-  }, [monthMap])
+    return map
+  }, [agg, search])
 
-  // Group by order within a source for This Month expand
   function groupByOrder(monthRows: SaleRow[]) {
     const map = new Map<string, SaleRow[]>()
     for (const r of monthRows) {
@@ -342,18 +336,22 @@ export default function ShippedSalesPanel() {
       </div>
 
       {/* Stats */}
-      {rows.length > 0 && (
-        <div className="grid grid-cols-2 gap-3">
-          <div className="bg-white/5 border border-white/10 rounded-lg p-3">
-            <div className="text-white/40 text-xs uppercase tracking-widest mb-1">Total Shipped Orders</div>
-            <div className="text-white font-bold text-xl">{totalOrders}</div>
+      {(activeTab === 'thismonth' ? rows.length > 0 : agg.length > 0) && (() => {
+        const statOrders  = activeTab === 'bymonth' ? agg.reduce((s, r) => s + r.orders, 0)  : totalOrders
+        const statRevenue = activeTab === 'bymonth' ? agg.reduce((s, r) => s + r.revenue, 0) : totalRevenue
+        return (
+          <div className="grid grid-cols-2 gap-3">
+            <div className="bg-white/5 border border-white/10 rounded-lg p-3">
+              <div className="text-white/40 text-xs uppercase tracking-widest mb-1">Total Shipped Orders</div>
+              <div className="text-white font-bold text-xl">{statOrders.toLocaleString()}</div>
+            </div>
+            <div className="bg-white/5 border border-white/10 rounded-lg p-3">
+              <div className="text-white/40 text-xs uppercase tracking-widest mb-1">Total Revenue</div>
+              <div className="text-green-400 font-bold text-xl">{fmtMoney(statRevenue)}</div>
+            </div>
           </div>
-          <div className="bg-white/5 border border-white/10 rounded-lg p-3">
-            <div className="text-white/40 text-xs uppercase tracking-widest mb-1">Total Revenue</div>
-            <div className="text-green-400 font-bold text-xl">{fmtMoney(totalRevenue)}</div>
-          </div>
-        </div>
-      )}
+        )
+      })()}
 
       {/* Sync success */}
       {syncMsg && (
@@ -373,7 +371,7 @@ export default function ShippedSalesPanel() {
           <div className="flex items-center justify-center h-48 text-white/30 text-sm gap-2">
             <RefreshCw className="w-4 h-4 animate-spin" /> Loading…
           </div>
-        ) : rows.length === 0 ? (
+        ) : (activeTab === 'thismonth' ? rows.length === 0 : agg.length === 0) ? (
           <div className="flex flex-col items-center justify-center h-64 gap-4 text-white/20">
             <TrendingUp className="w-12 h-12" />
             <div className="text-center">
@@ -440,17 +438,16 @@ export default function ShippedSalesPanel() {
             </table>
           </div>
         ) : monthMap.size === 0 ? (
-          <div className="flex items-center justify-center h-48 text-white/30 text-sm">No results match your search</div>
+          <div className="flex items-center justify-center h-48 text-white/30 text-sm">No data for By Month — sync Jan–Jun 2026 or check connection</div>
         ) : (
-          Array.from(monthMap.entries()).map(([month, monthRows]) => {
-            const sortedMonthSources = monthSourceMap.get(month) ?? []
-            const monthRevenue = sortedMonthSources.reduce((s, r) => s + r.revenue, 0)
-            const totalMonthOrders = sortedMonthSources.reduce((s, r) => s + r.orders, 0)
+          Array.from(monthMap.entries()).map(([month, srcRows]) => {
+            const monthRevenue   = srcRows.reduce((s, r) => s + r.revenue, 0)
+            const totalMonthOrders = srcRows.reduce((s, r) => s + r.orders, 0)
             const isOpen = expanded.has(month)
+            const sorted = [...srcRows].sort((a, b) => b.revenue - a.revenue)
 
             return (
               <div key={month} className="border border-white/10 rounded-lg overflow-hidden">
-                {/* Month row */}
                 <button
                   onClick={() => toggleMonth(month)}
                   className="w-full flex items-center px-4 py-3 bg-white/5 hover:bg-white/[0.08] transition-colors text-left"
@@ -466,7 +463,6 @@ export default function ShippedSalesPanel() {
                   </div>
                 </button>
 
-                {/* Expanded: one row per source */}
                 {isOpen && (
                   <table className="w-full text-xs border-collapse border-t border-white/10">
                     <thead>
@@ -477,7 +473,7 @@ export default function ShippedSalesPanel() {
                       </tr>
                     </thead>
                     <tbody>
-                      {sortedMonthSources.map(({ source, orders, revenue }) => (
+                      {sorted.map(({ source, orders, revenue }) => (
                         <tr key={source} className="border-t border-white/5 hover:bg-white/[0.03]">
                           <td className="px-4 py-2 text-white/70">{source}</td>
                           <td className="px-4 py-2 text-right text-white/40">{orders}</td>
