@@ -27,6 +27,7 @@ import EcomRestockPanel from '@/components/EcomRestockPanel'
 import InventoryOpsPanel from '@/components/InventoryOpsPanel'
 import OpenPoPanel from '@/components/OpenPoPanel'
 import ShippedSalesPanel from '@/components/ShippedSalesPanel'
+import ShippedSalesByProductPanel from '@/components/ShippedSalesByProductPanel'
 
 interface HotBin { bin: string; count: number; critical_count: number }
 
@@ -280,11 +281,7 @@ export default function Dashboard() {
             </button>
           </div>
           {salesSub === 'shippedsales' && <ShippedSalesPanel />}
-          {salesSub === 'shippedsalesbyproduct' && (
-            <div className="flex-1 flex items-center justify-center text-white/20 text-sm">
-              Shipped Sales by Product — coming soon
-            </div>
-          )}
+          {salesSub === 'shippedsalesbyproduct' && <ShippedSalesByProductPanel />}
         </div>
       ) : activeTab === 'ecomrestock' ? (
         <EcomRestockPanel />
