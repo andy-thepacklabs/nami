@@ -54,6 +54,7 @@ export default function Dashboard() {
   const [activeTab, setActiveTab] = useState<'splash' | 'home' | 'dashboard' | 'reconcile' | 'cyclecount' | 'finalereport' | 'ecomrestock' | 'openpo' | 'sales'>('home')
   const [wohTab, setWohTab] = useState<'sleeve' | 'display' | 'mylar' | 'tube' | 'cone' | 'label' | 'grinder' | 'lab' | 'marketing' | 'insert' | null>(null)
   const [dashSub, setDashSub] = useState<'woh' | 'reorder' | 'invops'>('woh')
+  const [salesSub, setSalesSub] = useState<'shippedsales'>('shippedsales')
   const [labelRows, setLabelRows] = useState<WohRow[]>([])
   const [labelLoading, setLabelLoading] = useState(false)
   const [labelSearch, setLabelSearch] = useState('')
@@ -258,7 +259,20 @@ export default function Dashboard() {
       ) : activeTab === 'openpo' ? (
         <OpenPoPanel />
       ) : activeTab === 'sales' ? (
-        <ShippedSalesPanel />
+        <div className="flex-1 flex flex-col overflow-hidden">
+          {/* Sales sub-tabs */}
+          <div className="flex items-center gap-2 px-6 py-3 border-b border-orange-900/30 bg-black shrink-0">
+            <button
+              onClick={() => setSalesSub('shippedsales')}
+              className={cn('flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-bold uppercase tracking-wide transition-colors',
+                salesSub === 'shippedsales' ? 'bg-orange-500/15 text-orange-400 ring-1 ring-orange-500/30' : 'text-white/50 hover:bg-white/5 hover:text-white'
+              )}
+            >
+              <TrendingUp className="w-4 h-4" />Shipped Sales
+            </button>
+          </div>
+          {salesSub === 'shippedsales' && <ShippedSalesPanel />}
+        </div>
       ) : activeTab === 'ecomrestock' ? (
         <EcomRestockPanel />
       ) : activeTab === 'home' ? (
