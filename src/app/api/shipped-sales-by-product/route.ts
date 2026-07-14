@@ -146,12 +146,12 @@ export async function GET(req: NextRequest) {
         COALESCE(NULLIF(product_name,''), product_id, '—') AS product,
         product_id,
         SUM(qty_shipped) AS qty,
-        SUM(subtotal)    AS revenue
+        SUM(amount)      AS revenue
       FROM shipped_sales_by_product
-      WHERE COALESCE(NULLIF(ship_date,''), '') LIKE ?
+      WHERE substr(COALESCE(NULLIF(ship_date,''), ''), 1, 7) = ?
       GROUP BY product_id
       ORDER BY revenue DESC
-    `).all(`${ym}%`)
+    `).all(ym)
     return NextResponse.json({ agg, meta })
   } catch (err) {
     return NextResponse.json({ agg: [], error: String(err) }, { status: 500 })

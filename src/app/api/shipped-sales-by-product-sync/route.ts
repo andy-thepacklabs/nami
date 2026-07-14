@@ -176,6 +176,7 @@ async function syncMonth(base64Auth: string, monthOffset: number, db: ReturnType
   // Capture raw headers for debugging
   const firstLine = csvText.split(/\r?\n/)[0] ?? ''
   syncState.csvHeaders = splitCsvLine(firstLine)
+  console.log('[product-sync] CSV headers:', JSON.stringify(syncState.csvHeaders))
 
   const rows = parseCsvData(csvText)
   syncState.sampleRevenue = rows[0]?.amount ?? null
