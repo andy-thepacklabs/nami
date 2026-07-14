@@ -265,8 +265,8 @@ export default function ShippedSalesByProductPanel() {
             <table className="w-full text-xs border-collapse">
               <thead className="sticky top-0 bg-[#0d0d0d] z-10">
                 <tr>
-                  <th className="text-left text-white/40 uppercase tracking-widest px-4 py-2.5 border-b border-white/10 font-medium">Product</th>
-                  <th className="text-left text-white/40 uppercase tracking-widest px-4 py-2.5 border-b border-white/10 font-medium">SKU</th>
+                  <th className="text-left text-white/40 uppercase tracking-widest px-4 py-2.5 border-b border-white/10 font-medium">Description</th>
+                  <th className="text-left text-white/40 uppercase tracking-widest px-4 py-2.5 border-b border-white/10 font-medium">Product ID</th>
                   <th className="text-right text-white/40 uppercase tracking-widest px-4 py-2.5 border-b border-white/10 font-medium">Qty Shipped</th>
                   <th className="text-right text-white/40 uppercase tracking-widest px-4 py-2.5 border-b border-white/10 font-medium">Total Revenue</th>
                 </tr>
@@ -314,8 +314,8 @@ export default function ShippedSalesByProductPanel() {
                   <table className="w-full text-xs border-collapse border-t border-white/10">
                     <thead>
                       <tr className="bg-black/30">
-                        <th className="text-left text-white/30 uppercase tracking-widest px-4 py-2 font-medium">Product</th>
-                        <th className="text-left text-white/30 uppercase tracking-widest px-4 py-2 font-medium">SKU</th>
+                        <th className="text-left text-white/30 uppercase tracking-widest px-4 py-2 font-medium">Description</th>
+                        <th className="text-left text-white/30 uppercase tracking-widest px-4 py-2 font-medium">Product ID</th>
                         <th className="text-right text-white/30 uppercase tracking-widest px-4 py-2 font-medium">Qty</th>
                         <th className="text-right text-white/30 uppercase tracking-widest px-4 py-2 font-medium">Revenue</th>
                       </tr>

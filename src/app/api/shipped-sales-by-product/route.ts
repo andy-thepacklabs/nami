@@ -14,10 +14,13 @@ function ensureSchema(db: ReturnType<typeof getDb>) {
       ship_date    TEXT,
       qty_shipped  REAL NOT NULL DEFAULT 0,
       unit_price   REAL NOT NULL DEFAULT 0,
+      amount       REAL NOT NULL DEFAULT 0,
       subtotal     REAL NOT NULL DEFAULT 0,
       imported_at  TEXT NOT NULL DEFAULT (datetime('now'))
     )
   `)
+  // migrate existing tables that lack the amount column
+  try { db.exec(`ALTER TABLE shipped_sales_by_product ADD COLUMN amount REAL NOT NULL DEFAULT 0`) } catch {}
 }
 
 function parseNum(v: unknown): number {
@@ -50,8 +53,8 @@ export async function POST(req: NextRequest) {
 
     const stmt = db.prepare(`
       INSERT INTO shipped_sales_by_product
-        (order_id, product_id, product_name, source, ship_date, qty_shipped, unit_price, subtotal)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        (order_id, product_id, product_name, source, ship_date, qty_shipped, unit_price, amount, subtotal)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `)
 
     const buf = await file.arrayBuffer()
@@ -72,7 +75,8 @@ export async function POST(req: NextRequest) {
     const iProdName = col('description', 'product name', 'product_name', 'item name', 'name')
     const iQty      = col('quantity', 'qty shipped', 'qty_shipped', 'qty')
     const iPrice    = col('amount per unit', 'unit price', 'unit_price', 'price')
-    const iSubtotal = col('subtotal', 'sub total', 'amount', 'total')
+    const iAmount   = col('amount')
+    const iSubtotal = col('subtotal', 'sub total', 'total')
 
     // Clear ONLY the current month's data if we can detect the month from data,
     // otherwise clear all and re-insert
@@ -92,6 +96,7 @@ export async function POST(req: NextRequest) {
         iShipDate >= 0 ? parseDate(row[iShipDate]) : '',
         iQty      >= 0 ? parseNum(row[iQty])      : 0,
         iPrice    >= 0 ? parseNum(row[iPrice])     : 0,
+        iAmount   >= 0 ? parseNum(row[iAmount])    : 0,
         iSubtotal >= 0 ? parseNum(row[iSubtotal])  : 0,
       )
       inserted++
@@ -124,7 +129,7 @@ export async function GET(req: NextRequest) {
           COALESCE(NULLIF(product_name,''), product_id, '—') AS product,
           product_id,
           SUM(qty_shipped) AS qty,
-          SUM(subtotal)    AS revenue
+          SUM(amount)      AS revenue
         FROM shipped_sales_by_product
         WHERE month_key != ''
         GROUP BY month_key, product_id

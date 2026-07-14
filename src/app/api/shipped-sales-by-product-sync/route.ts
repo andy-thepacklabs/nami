@@ -104,7 +104,7 @@ function parseDate(s: string): string {
 interface ProductRow {
   source: string; orderId: string; shipDate: string
   productId: string; productName: string
-  qty: number; unitPrice: number; subtotal: number
+  qty: number; unitPrice: number; amount: number; subtotal: number
 }
 
 function parseCsvData(text: string): ProductRow[] {
@@ -120,7 +120,8 @@ function parseCsvData(text: string): ProductRow[] {
   const iProdName = find('description', 'product name', 'product_name')
   const iQty      = find('quantity', 'qty shipped', 'qty')
   const iPrice    = find('amount per unit', 'unit price')
-  const iSubtotal = find('subtotal', 'amount')
+  const iAmount   = find('amount')
+  const iSubtotal = find('subtotal', 'total')
 
   const rows: ProductRow[] = []
   for (const line of lines.slice(1)) {
@@ -135,6 +136,7 @@ function parseCsvData(text: string): ProductRow[] {
       productName: iProdName >= 0 ? v[iProdName]          : '',
       qty:         iQty      >= 0 ? parseNum(v[iQty])     : 0,
       unitPrice:   iPrice    >= 0 ? parseNum(v[iPrice])   : 0,
+      amount:      iAmount   >= 0 ? parseNum(v[iAmount])  : 0,
       subtotal:    iSubtotal >= 0 ? parseNum(v[iSubtotal]) : 0,
     })
   }
@@ -146,10 +148,12 @@ function ensureSchema(db: ReturnType<typeof getDb>) {
     CREATE TABLE IF NOT EXISTS shipped_sales_by_product (
       order_id TEXT, product_id TEXT, product_name TEXT, source TEXT,
       ship_date TEXT, qty_shipped REAL NOT NULL DEFAULT 0,
-      unit_price REAL NOT NULL DEFAULT 0, subtotal REAL NOT NULL DEFAULT 0,
+      unit_price REAL NOT NULL DEFAULT 0, amount REAL NOT NULL DEFAULT 0,
+      subtotal REAL NOT NULL DEFAULT 0,
       imported_at TEXT NOT NULL DEFAULT (datetime('now'))
     )
   `)
+  try { db.exec(`ALTER TABLE shipped_sales_by_product ADD COLUMN amount REAL NOT NULL DEFAULT 0`) } catch {}
 }
 
 const syncState = {
@@ -173,10 +177,10 @@ async function syncMonth(base64Auth: string, monthOffset: number, db: ReturnType
 
   const stmt = db.prepare(`
     INSERT INTO shipped_sales_by_product
-      (order_id, product_id, product_name, source, ship_date, qty_shipped, unit_price, subtotal)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      (order_id, product_id, product_name, source, ship_date, qty_shipped, unit_price, amount, subtotal)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `)
-  for (const r of rows) stmt.run(r.orderId, r.productId, r.productName, r.source, r.shipDate, r.qty, r.unitPrice, r.subtotal)
+  for (const r of rows) stmt.run(r.orderId, r.productId, r.productName, r.source, r.shipDate, r.qty, r.unitPrice, r.amount, r.subtotal)
   return rows.length
 }
 
