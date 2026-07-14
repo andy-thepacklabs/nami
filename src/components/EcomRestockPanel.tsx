@@ -447,6 +447,8 @@ export default function EcomRestockPanel() {
   const [bomLoaded, setBomLoaded] = useState(false)
   const [bomSaving, setBomSaving] = useState(false)
   const [bomError, setBomError] = useState<string | null>(null)
+  const [triggerWeeks, setTriggerWeeks] = useState(1)
+  const [restockWeeks, setRestockWeeks] = useState(4)
 
   async function load() {
     setLoading(true)
@@ -520,13 +522,14 @@ export default function EcomRestockPanel() {
 
   const tableRows: DerivedRow[] = rows.map(r => {
     const daily = (r.sales_60d ?? 0) / 60
-    const restockPoint = Math.ceil(daily * 7)
-    const qtyToRestock = Math.max(0, Math.ceil(daily * 28) - r.qoh)
+    const restockPoint = Math.ceil(daily * triggerWeeks * 7)
+    const qtyToRestock = Math.max(0, Math.ceil(daily * restockWeeks * 7) - r.qoh)
     return { ...r, restockPoint, qtyToRestock }
   })
 
-  const needsRestock = tableRows.filter(r => r.qtyToRestock > 0)
-  const ok = tableRows.filter(r => r.qtyToRestock === 0)
+  // Show in "needs restock" only when QoH has dropped to or below the trigger point
+  const needsRestock = tableRows.filter(r => r.qoh <= r.restockPoint && r.qtyToRestock > 0)
+  const ok = tableRows.filter(r => r.qoh > r.restockPoint || r.qtyToRestock === 0)
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden p-4 gap-4">
@@ -536,9 +539,24 @@ export default function EcomRestockPanel() {
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-white font-semibold text-base">Ecom Single Restock</h2>
-            <p className="text-white/40 text-xs mt-0.5">-01 SKUs · Restock Point = 1-week supply · Qty to Restock targets 4-week supply</p>
+            <p className="text-white/40 text-xs mt-0.5">-01 SKUs · Restock Point = {triggerWeeks}wk supply · Qty to Restock targets {restockWeeks}wk supply</p>
           </div>
           <div className="flex items-center gap-2">
+            {/* Week selectors */}
+            <div className="flex items-center gap-1.5 text-xs text-white/50 border border-white/10 rounded px-3 py-1.5 bg-white/5">
+              <span className="text-white/30">Trigger</span>
+              <select value={triggerWeeks} onChange={e => setTriggerWeeks(Number(e.target.value))}
+                className="bg-transparent text-white font-semibold outline-none cursor-pointer">
+                {[1,2,3,4,6,8].map(w => <option key={w} value={w} className="bg-[#111]">{w}wk</option>)}
+              </select>
+            </div>
+            <div className="flex items-center gap-1.5 text-xs text-white/50 border border-white/10 rounded px-3 py-1.5 bg-white/5">
+              <span className="text-white/30">Restock to</span>
+              <select value={restockWeeks} onChange={e => setRestockWeeks(Number(e.target.value))}
+                className="bg-transparent text-white font-semibold outline-none cursor-pointer">
+                {[2,3,4,6,8,12].map(w => <option key={w} value={w} className="bg-[#111]">{w}wk</option>)}
+              </select>
+            </div>
             {/* BOM Upload */}
             {!bomLoaded ? (
               <label className="flex items-center gap-1.5 text-xs text-white/60 hover:text-white border border-white/10 hover:border-white/20 rounded px-3 py-1.5 transition-colors cursor-pointer">

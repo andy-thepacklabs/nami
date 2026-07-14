@@ -220,12 +220,12 @@ export default function ProductionPanel() {
 
   const [syncProgress, setSyncProgress] = useState<{ page: number; total: number } | null>(null)
 
-  async function syncFromFinale() {
+  async function syncFromFinale(full = false) {
     setSyncing(true)
     setError(null)
     setSyncProgress(null)
     try {
-      const res = await fetch('/api/builds', { method: 'POST' })
+      const res = await fetch(`/api/builds${full ? '?full=1' : ''}`, { method: 'POST' })
       const data = await res.json()
       if (!data.started && data.reason !== 'already syncing') throw new Error(data.reason)
 
@@ -338,7 +338,7 @@ export default function ProductionPanel() {
             {loading ? 'Loading…' : 'Refresh'}
           </button>
 
-          <button onClick={syncFromFinale} disabled={syncing || loading}
+          <button onClick={() => syncFromFinale(false)} disabled={syncing || loading}
             className="flex items-center gap-1.5 text-xs font-bold bg-orange-500/15 text-orange-400 hover:bg-orange-500/25 border border-orange-500/30 rounded px-3 py-1.5 transition-colors disabled:opacity-50">
             <Zap className={`w-3.5 h-3.5 ${syncing ? 'animate-pulse' : ''}`} />
             {syncing
@@ -347,6 +347,13 @@ export default function ProductionPanel() {
                 : 'Starting…'
               : syncedAt ? '⚡ Sync New' : '⚡ Full Sync'}
           </button>
+          {syncedAt && (
+            <button onClick={() => syncFromFinale(true)} disabled={syncing || loading}
+              title="Re-download all builds from scratch"
+              className="text-xs text-white/25 hover:text-white/50 border border-white/10 rounded px-2 py-1.5 transition-colors disabled:opacity-30">
+              Full
+            </button>
+          )}
         </div>
       </div>
 

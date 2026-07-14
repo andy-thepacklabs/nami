@@ -92,7 +92,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ buildId
       buildId,
       lines,
       issueCount: lines.filter(l => l.hasIssue).length,
-      approvedLocations: APPROVED_LOCATIONS,
+      approvedLocations: APPROVED_KEYWORDS,
     })
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 })

@@ -68,7 +68,7 @@ function getCredentials() {
 
 async function runSync() {
   const { account, base64 } = getCredentials()
-  const FIELDS = `buildId status validation quantityToProduce startDate startDateActual completeDate completeDateActual completeTransactionUser { name } productToProduce { productId description }`
+  const FIELDS = `buildId status validation quantityToProduce startDate startDateActual completeDate completeDateActual recordLastUpdated completeTransactionUser { name } productToProduce { productId description }`
 
   syncState.status = 'syncing'
   syncState.page = 0
@@ -115,7 +115,8 @@ async function runSync() {
         const completedStr   = parseFinaleDate(String(n.completeDateActual ?? ''))
         const startActualStr = parseFinaleDate(String(n.startDateActual ?? ''))
         const startStr       = parseFinaleDate(String(n.startDate ?? ''))
-        const effectiveDate  = completedStr || startActualStr || startStr
+        const lastUpdatedStr = parseFinaleDate(String(n.recordLastUpdated ?? ''))
+        const effectiveDate  = completedStr || startActualStr || startStr || lastUpdatedStr
         if (!effectiveDate) continue
         const product = n.productToProduce as { productId?: string; description?: string } | null
         const userEmail = (n.completeTransactionUser as { name?: string } | null)?.name ?? ''
@@ -197,11 +198,19 @@ export async function GET(req: Request) {
 }
 
 // POST — kick off background sync, return immediately
-export async function POST() {
+// ?full=1 clears the cursor to force a complete re-download
+export async function POST(req: Request) {
   if (syncState.status === 'syncing') {
     return NextResponse.json({ started: false, reason: 'already syncing' })
   }
-  // Fire and forget — don't await
+  const { searchParams } = new URL(req.url)
+  if (searchParams.get('full') === '1') {
+    // Clear cursor so runSync does a full re-download
+    try {
+      const db = getDb()
+      db.exec('DELETE FROM builds_sync_meta')
+    } catch { /* ignore */ }
+  }
   runSync().catch(() => {})
   return NextResponse.json({ started: true })
 }

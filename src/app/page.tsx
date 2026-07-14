@@ -191,7 +191,6 @@ export default function Dashboard() {
         <nav className="flex-1 px-3 py-12 space-y-1 overflow-y-auto">
           <SideNavItem tab="home"        icon={<BarChart2 className="w-4 h-4 shrink-0" />}       label="Dashboard" />
           <SideNavItem tab="dashboard"   icon={<Package className="w-4 h-4 shrink-0" />}         label="Inventory" />
-          <SideNavItem tab="finalereport" icon={<FileSpreadsheet className="w-4 h-4 shrink-0" />} label="Finale Report" />
           <SideNavItem tab="reconcile"   icon={<ClipboardCheck className="w-4 h-4 shrink-0" />}  label="Reconcile" />
           <div className="pt-2 border-t border-white/10 space-y-1 mt-2">
             <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-bold text-white/20 cursor-not-allowed" disabled>
@@ -218,8 +217,8 @@ export default function Dashboard() {
         {/* Top bar */}
         <header className="h-14 border-b border-orange-900/30 bg-[#0d0a07] flex items-center px-5 gap-3 shrink-0 z-20">
           <div className="flex-1" />
-<button onClick={() => setActiveTab('ecomrestock')} className={cn('btn text-sm border', activeTab === 'ecomrestock' ? 'bg-sky-600/20 text-sky-400 border-sky-600/30' : 'bg-white/5 text-white/60 border-white/10 hover:bg-white/10 hover:text-white')}>
-            <Package className="w-4 h-4" /> Ecom Single Restock
+          <button onClick={() => setActiveTab('finalereport')} className="btn text-sm bg-white/5 text-white/70 border border-white/10 hover:bg-white/10">
+            <FileSpreadsheet className="w-4 h-4" /> Finale Report
           </button>
           <button onClick={() => setShowSheets(true)} className="btn text-sm bg-orange-600/20 text-white border border-orange-600/30 hover:bg-orange-600/30">
             <FileSpreadsheet className="w-4 h-4" /> Daily Cycle Count

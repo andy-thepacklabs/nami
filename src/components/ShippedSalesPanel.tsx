@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useMemo } from 'react'
 import { RefreshCw, TrendingUp, AlertTriangle, ChevronDown, ChevronRight, Upload, Zap } from 'lucide-react'
 
 interface SaleRow {
@@ -22,19 +22,27 @@ interface Meta {
 }
 
 function fmtMoney(n: number) {
-  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}M`
-  if (n >= 1_000) return `$${(n / 1_000).toFixed(1)}K`
-  return `$${n.toFixed(0)}`
+  return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
 function fmtDate(s: string) {
   if (!s) return '—'
-  const d = new Date(s)
+  // Parse YYYY-MM-DD as local to avoid UTC→local shift (new Date("2026-07-01") = Jun 30 local)
+  const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/)
+  const d = iso
+    ? new Date(parseInt(iso[1]), parseInt(iso[2]) - 1, parseInt(iso[3]))
+    : new Date(s)
   return isNaN(d.getTime()) ? s : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
 function getMonthKey(dateStr: string) {
   if (!dateStr) return 'Unknown'
+  // Parse YYYY-MM-DD directly to avoid UTC→local timezone shift (new Date("2026-07-01") = June 30 local)
+  const iso = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})/)
+  if (iso) {
+    return new Date(parseInt(iso[1]), parseInt(iso[2]) - 1, parseInt(iso[3]))
+      .toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+  }
   const d = new Date(dateStr)
   if (isNaN(d.getTime())) return 'Unknown'
   return d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
@@ -78,14 +86,78 @@ export default function ShippedSalesPanel() {
     setSyncMsg(null)
     setError(null)
     try {
+      // Fire-and-forget POST — returns immediately
       const res = await fetch('/api/shipped-sales-sync', { method: 'POST' })
       const data = await res.json()
-      if (data.error) { setError(data.error); return }
-      setSyncMsg(`Synced ${data.orderCount} orders (${data.dateRange})`)
-      await load()
+      if (data.reason === 'already syncing' || data.started === false) {
+        // Already running — just poll
+      } else if (data.error) {
+        setError(data.error)
+        setSyncing(false)
+        return
+      }
+
+      // Poll progress every 2s until done
+      const poll = async () => {
+        try {
+          const p = await fetch('/api/shipped-sales-sync?progress=1').then(r => r.json())
+          if (p.status === 'done') {
+            setSyncMsg(`Synced ${p.count.toLocaleString()} orders · ${p.pages} pages · ${p.mode === 'incremental' ? '⚡ incremental' : '🔍 full scan (faster next time)'}`)
+            await load()
+            setSyncing(false)
+          } else if (p.status === 'error') {
+            setError(p.error ?? 'Sync failed')
+            setSyncing(false)
+          } else {
+            setSyncMsg(`Page ${p.pages ?? '…'} · ${(p.count ?? 0).toLocaleString()} this-month orders found`)
+            setTimeout(poll, 2000)
+          }
+        } catch {
+          setTimeout(poll, 2000)
+        }
+      }
+      setTimeout(poll, 2000)
     } catch (e) {
       setError(String(e))
-    } finally {
+      setSyncing(false)
+    }
+  }
+
+  async function handleHistoricalSync() {
+    setSyncing(true)
+    setSyncMsg(null)
+    setError(null)
+    try {
+      const res = await fetch('/api/shipped-sales-sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ historical: true }),
+      })
+      const data = await res.json()
+      if (!data.started && data.reason !== 'already syncing') {
+        setError(data.error ?? 'Failed to start')
+        setSyncing(false)
+        return
+      }
+      const poll = async () => {
+        try {
+          const p = await fetch('/api/shipped-sales-sync').then(r => r.json())
+          if (p.status === 'done') {
+            setSyncMsg(`Synced ${p.count.toLocaleString()} orders across Jan–Jun 2026`)
+            await load()
+            setSyncing(false)
+          } else if (p.status === 'error') {
+            setError(p.error ?? 'Sync failed')
+            setSyncing(false)
+          } else {
+            setSyncMsg(p.progress ?? 'Syncing…')
+            setTimeout(poll, 2500)
+          }
+        } catch { setTimeout(poll, 2500) }
+      }
+      setTimeout(poll, 2000)
+    } catch (e) {
+      setError(String(e))
       setSyncing(false)
     }
   }
@@ -118,36 +190,74 @@ export default function ShippedSalesPanel() {
     })
   }
 
-  const thisMonthRows = rows.filter(r => getMonthKey(r.ship_date || r.order_date) === THIS_MONTH_KEY)
+  // Pre-tag every row with its month key once (avoids repeated regex in render)
+  const taggedRows = useMemo(() =>
+    rows.map(r => ({ ...r, _monthKey: getMonthKey(r.ship_date || r.order_date) })),
+    [rows]
+  )
 
-  const sourceRows = activeTab === 'thismonth' ? thisMonthRows : rows
+  const thisMonthRows = useMemo(() =>
+    taggedRows.filter(r => r._monthKey === THIS_MONTH_KEY),
+    [taggedRows, THIS_MONTH_KEY]
+  )
 
-  const filtered = sourceRows.filter(r => {
-    if (!search) return true
+  const sourceRows = activeTab === 'thismonth' ? thisMonthRows : taggedRows
+
+  const filtered = useMemo(() => {
+    if (!search) return sourceRows
     const q = search.toLowerCase()
-    return r.order_id.toLowerCase().includes(q) ||
+    return sourceRows.filter(r =>
+      r.order_id.toLowerCase().includes(q) ||
       (r.customer ?? '').toLowerCase().includes(q) ||
       (r.product_id ?? '').toLowerCase().includes(q) ||
       (r.product_name ?? '').toLowerCase().includes(q)
-  })
+    )
+  }, [sourceRows, search])
 
-  // Group by ship month (fall back to order_date)
-  const monthMap = new Map<string, SaleRow[]>()
-  for (const r of filtered) {
-    const key = getMonthKey(r.ship_date || r.order_date)
-    if (!monthMap.has(key)) monthMap.set(key, [])
-    monthMap.get(key)!.push(r)
-  }
+  // Group by ship month for By Month view
+  const monthMap = useMemo(() => {
+    const map = new Map<string, typeof taggedRows>()
+    for (const r of filtered) {
+      if (!map.has(r._monthKey)) map.set(r._monthKey, [])
+      map.get(r._monthKey)!.push(r)
+    }
+    return map
+  }, [filtered])
 
-  // For This Month: group by order
-  const thisMonthOrders = new Map<string, SaleRow[]>()
-  for (const r of filtered) {
-    const key = r.order_id || '—'
-    if (!thisMonthOrders.has(key)) thisMonthOrders.set(key, [])
-    thisMonthOrders.get(key)!.push(r)
-  }
+  // Group by source for This Month view
+  const sortedSources = useMemo(() => {
+    const bySource = new Map<string, typeof filtered>()
+    for (const r of filtered) {
+      const key = r.customer && r.customer !== '—' ? r.customer : 'Unknown'
+      if (!bySource.has(key)) bySource.set(key, [])
+      bySource.get(key)!.push(r)
+    }
+    return Array.from(bySource.entries()).sort(
+      (a, b) => b[1].reduce((s, r) => s + r.subtotal, 0) - a[1].reduce((s, r) => s + r.subtotal, 0)
+    )
+  }, [filtered])
 
-  // Group by order within a month for subtotal display
+  // Pre-compute per-month source groupings for By Month view
+  const monthSourceMap = useMemo(() => {
+    const result = new Map<string, { source: string; orders: number; revenue: number }[]>()
+    for (const [month, monthRows] of monthMap.entries()) {
+      const srcMap = new Map<string, { orders: Set<string>; revenue: number }>()
+      for (const r of monthRows) {
+        const src = r.customer || '—'
+        if (!srcMap.has(src)) srcMap.set(src, { orders: new Set(), revenue: 0 })
+        const s = srcMap.get(src)!
+        s.orders.add(r.order_id)
+        s.revenue += r.subtotal
+      }
+      result.set(month, Array.from(srcMap.entries())
+        .map(([source, { orders, revenue }]) => ({ source, orders: orders.size, revenue }))
+        .sort((a, b) => b.revenue - a.revenue)
+      )
+    }
+    return result
+  }, [monthMap])
+
+  // Group by order within a source for This Month expand
   function groupByOrder(monthRows: SaleRow[]) {
     const map = new Map<string, SaleRow[]>()
     for (const r of monthRows) {
@@ -158,9 +268,9 @@ export default function ShippedSalesPanel() {
     return map
   }
 
-  const totalRevenue    = filtered.reduce((s, r) => s + (r.subtotal || r.qty_shipped * r.unit_price), 0)
-  const totalOrders     = new Set(filtered.map(r => r.order_id)).size
-  const uniqueCustomers = new Set(filtered.map(r => r.customer)).size
+  const totalRevenue    = useMemo(() => filtered.reduce((s, r) => s + (r.subtotal || r.qty_shipped * r.unit_price), 0), [filtered])
+  const totalOrders     = useMemo(() => new Set(filtered.map(r => r.order_id)).size, [filtered])
+  const uniqueCustomers = useMemo(() => new Set(filtered.map(r => r.customer)).size, [filtered])
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden p-4 gap-4">
@@ -199,10 +309,20 @@ export default function ShippedSalesPanel() {
               className="flex items-center gap-1.5 text-xs bg-orange-500/15 text-orange-400 hover:bg-orange-500/25 border border-orange-500/30 rounded px-3 py-1.5 transition-colors font-semibold"
             >
               <Zap className={`w-3.5 h-3.5 ${syncing ? 'animate-pulse' : ''}`} />
-              {syncing ? 'Syncing…' : 'Sync from Finale'}
+              {syncing ? `Syncing… ${syncMsg ? '· ' + syncMsg : ''}` : 'Sync from Finale'}
             </button>
           )}
-          <input ref={fileRef} type="file" accept=".csv" className="hidden" onChange={handleUpload} />
+          {activeTab === 'bymonth' && (
+            <button
+              onClick={handleHistoricalSync}
+              disabled={syncing}
+              className="flex items-center gap-1.5 text-xs bg-orange-500/15 text-orange-400 hover:bg-orange-500/25 border border-orange-500/30 rounded px-3 py-1.5 transition-colors font-semibold"
+            >
+              <Zap className={`w-3.5 h-3.5 ${syncing ? 'animate-pulse' : ''}`} />
+              {syncing ? `${syncMsg ?? 'Syncing…'}` : 'Sync Jan–Jun 2026'}
+            </button>
+          )}
+          <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls" className="hidden" onChange={handleUpload} />
           <button
             onClick={() => fileRef.current?.click()}
             disabled={uploading}
@@ -223,14 +343,10 @@ export default function ShippedSalesPanel() {
 
       {/* Stats */}
       {rows.length > 0 && (
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 gap-3">
           <div className="bg-white/5 border border-white/10 rounded-lg p-3">
-            <div className="text-white/40 text-xs uppercase tracking-widest mb-1">Total Orders</div>
+            <div className="text-white/40 text-xs uppercase tracking-widest mb-1">Total Shipped Orders</div>
             <div className="text-white font-bold text-xl">{totalOrders}</div>
-          </div>
-          <div className="bg-white/5 border border-white/10 rounded-lg p-3">
-            <div className="text-white/40 text-xs uppercase tracking-widest mb-1">Unique Customers</div>
-            <div className="text-sky-400 font-bold text-xl">{uniqueCustomers}</div>
           </div>
           <div className="bg-white/5 border border-white/10 rounded-lg p-3">
             <div className="text-white/40 text-xs uppercase tracking-widest mb-1">Total Revenue</div>
@@ -272,32 +388,52 @@ export default function ShippedSalesPanel() {
             </button>
           </div>
         ) : activeTab === 'thismonth' ? (
-          /* ── This Month flat order table ── */
+          /* ── This Month grouped by Source ── */
           <div className="border border-white/10 rounded-lg overflow-hidden">
             <table className="w-full text-xs border-collapse">
               <thead className="sticky top-0 bg-[#0d0d0d] z-10">
                 <tr>
-                  <th className="text-left text-white/40 uppercase tracking-widest px-4 py-2.5 border-b border-white/10 font-medium">Order #</th>
-                  <th className="text-left text-white/40 uppercase tracking-widest px-4 py-2.5 border-b border-white/10 font-medium">Customer</th>
-                  <th className="text-left text-white/40 uppercase tracking-widest px-4 py-2.5 border-b border-white/10 font-medium">Order Date</th>
-                  <th className="text-left text-white/40 uppercase tracking-widest px-4 py-2.5 border-b border-white/10 font-medium">Ship Date</th>
-                  <th className="text-right text-white/40 uppercase tracking-widest px-4 py-2.5 border-b border-white/10 font-medium">Lines</th>
-                  <th className="text-right text-white/40 uppercase tracking-widest px-4 py-2.5 border-b border-white/10 font-medium">Order Total</th>
+                  <th className="text-left text-white/40 uppercase tracking-widest px-4 py-2.5 border-b border-white/10 font-medium w-8"></th>
+                  <th className="text-left text-white/40 uppercase tracking-widest px-4 py-2.5 border-b border-white/10 font-medium">Source</th>
+                  <th className="text-right text-white/40 uppercase tracking-widest px-4 py-2.5 border-b border-white/10 font-medium">Orders</th>
+                  <th className="text-right text-white/40 uppercase tracking-widest px-4 py-2.5 border-b border-white/10 font-medium">Total Revenue</th>
                 </tr>
               </thead>
               <tbody>
-                {Array.from(thisMonthOrders.entries()).map(([orderId, orderRows]) => {
-                  const first = orderRows[0]
-                  const orderTotal = orderRows.reduce((s, r) => s + (r.subtotal || r.qty_shipped * r.unit_price), 0)
+                {sortedSources.map(([source, srcRows]) => {
+                  const srcTotal  = srcRows.reduce((s, r) => s + r.subtotal, 0)
+                  const orderCount = new Set(srcRows.map(r => r.order_id)).size
+                  const isOpen    = expanded.has(source)
+                  const orderMap  = groupByOrder(srcRows)
                   return (
-                    <tr key={orderId} className="border-b border-white/5 hover:bg-white/[0.03]">
-                      <td className="px-4 py-2.5 font-mono text-orange-400 font-semibold">{orderId}</td>
-                      <td className="px-4 py-2.5 text-white/60 max-w-[200px]"><span className="truncate block">{first.customer || '—'}</span></td>
-                      <td className="px-4 py-2.5 text-white/40">{fmtDate(first.order_date)}</td>
-                      <td className="px-4 py-2.5 text-white/60">{fmtDate(first.ship_date)}</td>
-                      <td className="px-4 py-2.5 text-right text-white/40">{orderRows.length}</td>
-                      <td className="px-4 py-2.5 text-right font-mono font-bold text-green-400">{orderTotal > 0 ? fmtMoney(orderTotal) : '—'}</td>
-                    </tr>
+                    <React.Fragment key={source}>
+                      <tr
+                        onClick={() => toggleMonth(source)}
+                        className="border-b border-white/5 hover:bg-white/[0.04] cursor-pointer"
+                      >
+                        <td className="px-4 py-3 text-white/30">
+                          {isOpen ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+                        </td>
+                        <td className="px-4 py-3 font-semibold text-white">{source}</td>
+                        <td className="px-4 py-3 text-right text-white/50">{orderCount}</td>
+                        <td className="px-4 py-3 text-right font-mono font-bold text-green-400">{srcTotal > 0 ? fmtMoney(srcTotal) : '—'}</td>
+                      </tr>
+                      {isOpen && Array.from(orderMap.entries()).map(([orderId, orderRows]) => {
+                        const orderTotal = orderRows.reduce((s, r) => s + r.subtotal, 0)
+                        const first = orderRows[0]
+                        return (
+                          <tr key={orderId} className="border-b border-white/[0.03] bg-white/[0.015] hover:bg-white/[0.03]">
+                            <td className="px-4 py-2"></td>
+                            <td className="px-4 py-2 font-mono text-orange-400/80 text-[11px]">
+                              {orderId}
+                              <span className="ml-3 text-white/30">{fmtDate(first.ship_date || first.order_date)}</span>
+                            </td>
+                            <td className="px-4 py-2 text-right text-white/30">{orderRows.length}</td>
+                            <td className="px-4 py-2 text-right font-mono text-green-400/70">{orderTotal > 0 ? fmtMoney(orderTotal) : '—'}</td>
+                          </tr>
+                        )
+                      })}
+                    </React.Fragment>
                   )
                 })}
               </tbody>
@@ -307,8 +443,9 @@ export default function ShippedSalesPanel() {
           <div className="flex items-center justify-center h-48 text-white/30 text-sm">No results match your search</div>
         ) : (
           Array.from(monthMap.entries()).map(([month, monthRows]) => {
-            const monthRevenue = monthRows.reduce((s, r) => s + (r.subtotal || r.qty_shipped * r.unit_price), 0)
-            const orderGroups = groupByOrder(monthRows)
+            const sortedMonthSources = monthSourceMap.get(month) ?? []
+            const monthRevenue = sortedMonthSources.reduce((s, r) => s + r.revenue, 0)
+            const totalMonthOrders = sortedMonthSources.reduce((s, r) => s + r.orders, 0)
             const isOpen = expanded.has(month)
 
             return (
@@ -324,44 +461,31 @@ export default function ShippedSalesPanel() {
                   }
                   <span className="text-white font-semibold text-sm flex-1">{month}</span>
                   <div className="flex items-center gap-8 text-xs">
-                    <span className="text-white/40">{orderGroups.size} orders</span>
-                    <span className="text-white/40">{new Set(monthRows.map(r => r.customer)).size} customers</span>
+                    <span className="text-white/40">{totalMonthOrders} orders</span>
                     <span className="text-green-400 font-bold font-mono w-20 text-right">{fmtMoney(monthRevenue)}</span>
                   </div>
                 </button>
 
-                {/* Expanded: one row per order */}
+                {/* Expanded: one row per source */}
                 {isOpen && (
                   <table className="w-full text-xs border-collapse border-t border-white/10">
                     <thead>
                       <tr className="bg-black/30">
-                        <th className="text-left text-white/30 uppercase tracking-widest px-4 py-2 font-medium">Order #</th>
-                        <th className="text-left text-white/30 uppercase tracking-widest px-4 py-2 font-medium">Customer</th>
-                        <th className="text-left text-white/30 uppercase tracking-widest px-4 py-2 font-medium">Order Date</th>
-                        <th className="text-left text-white/30 uppercase tracking-widest px-4 py-2 font-medium">Ship Date</th>
-                        <th className="text-right text-white/30 uppercase tracking-widest px-4 py-2 font-medium">Lines</th>
-                        <th className="text-right text-white/30 uppercase tracking-widest px-4 py-2 font-medium">Order Total</th>
+                        <th className="text-left text-white/30 uppercase tracking-widest px-4 py-2 font-medium">Source</th>
+                        <th className="text-right text-white/30 uppercase tracking-widest px-4 py-2 font-medium">Orders</th>
+                        <th className="text-right text-white/30 uppercase tracking-widest px-4 py-2 font-medium">Total Revenue</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {Array.from(orderGroups.entries()).map(([orderId, orderRows]) => {
-                        const first = orderRows[0]
-                        const orderTotal = orderRows.reduce((s, r) => s + (r.subtotal || r.qty_shipped * r.unit_price), 0)
-                        return (
-                          <tr key={orderId} className="border-t border-white/5 hover:bg-white/[0.03]">
-                            <td className="px-4 py-2 font-mono text-orange-400 font-semibold">{orderId}</td>
-                            <td className="px-4 py-2 text-white/60 max-w-[200px]">
-                              <span className="truncate block">{first.customer || '—'}</span>
-                            </td>
-                            <td className="px-4 py-2 text-white/40">{fmtDate(first.order_date)}</td>
-                            <td className="px-4 py-2 text-white/60">{fmtDate(first.ship_date)}</td>
-                            <td className="px-4 py-2 text-right text-white/40">{orderRows.length}</td>
-                            <td className="px-4 py-2 text-right font-mono font-bold text-green-400">
-                              {orderTotal > 0 ? fmtMoney(orderTotal) : '—'}
-                            </td>
-                          </tr>
-                        )
-                      })}
+                      {sortedMonthSources.map(({ source, orders, revenue }) => (
+                        <tr key={source} className="border-t border-white/5 hover:bg-white/[0.03]">
+                          <td className="px-4 py-2 text-white/70">{source}</td>
+                          <td className="px-4 py-2 text-right text-white/40">{orders}</td>
+                          <td className="px-4 py-2 text-right font-mono font-bold text-green-400">
+                            {revenue > 0 ? fmtMoney(revenue) : '—'}
+                          </td>
+                        </tr>
+                      ))}
                     </tbody>
                   </table>
                 )}
