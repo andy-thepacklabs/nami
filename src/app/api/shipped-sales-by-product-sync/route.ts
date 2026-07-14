@@ -159,18 +159,26 @@ function ensureSchema(db: ReturnType<typeof getDb>) {
 }
 
 const syncState = {
-  status:   'idle' as 'idle' | 'syncing' | 'done' | 'error',
-  count:    0,
-  progress: '' as string,
-  error:    null as string | null,
-  syncedAt: null as string | null,
+  status:      'idle' as 'idle' | 'syncing' | 'done' | 'error',
+  count:       0,
+  progress:    '' as string,
+  error:       null as string | null,
+  syncedAt:    null as string | null,
+  csvHeaders:  null as string[] | null,   // debug: actual headers from last Finale CSV
+  sampleRevenue: null as number | null,   // debug: amount value from first row
 }
 
 async function syncMonth(base64Auth: string, monthOffset: number, db: ReturnType<typeof getDb>) {
   const csvUrl = await generateReport(base64Auth, monthOffset)
   if (!csvUrl) throw new Error(`Could not get CSV URL for month offset ${monthOffset}`)
   const csvText = await downloadCsv(csvUrl, base64Auth)
-  const rows    = parseCsvData(csvText)
+
+  // Capture raw headers for debugging
+  const firstLine = csvText.split(/\r?\n/)[0] ?? ''
+  syncState.csvHeaders = splitCsvLine(firstLine)
+
+  const rows = parseCsvData(csvText)
+  syncState.sampleRevenue = rows[0]?.amount ?? null
 
   const now = new Date()
   const d   = new Date(now.getFullYear(), now.getMonth() + monthOffset, 1)
