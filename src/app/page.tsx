@@ -54,7 +54,7 @@ export default function Dashboard() {
   const [activeTab, setActiveTab] = useState<'splash' | 'home' | 'dashboard' | 'reconcile' | 'cyclecount' | 'finalereport' | 'ecomrestock' | 'openpo' | 'sales'>('home')
   const [wohTab, setWohTab] = useState<'sleeve' | 'display' | 'mylar' | 'tube' | 'cone' | 'label' | 'grinder' | 'lab' | 'marketing' | 'insert' | null>(null)
   const [dashSub, setDashSub] = useState<'woh' | 'reorder' | 'invops'>('woh')
-  const [salesSub, setSalesSub] = useState<'shippedsales'>('shippedsales')
+  const [salesSub, setSalesSub] = useState<'shippedsales' | 'shippedsalesbyproduct'>('shippedsales')
   const [labelRows, setLabelRows] = useState<WohRow[]>([])
   const [labelLoading, setLabelLoading] = useState(false)
   const [labelSearch, setLabelSearch] = useState('')
@@ -270,8 +270,21 @@ export default function Dashboard() {
             >
               <TrendingUp className="w-4 h-4" />Shipped Sales
             </button>
+            <button
+              onClick={() => setSalesSub('shippedsalesbyproduct')}
+              className={cn('flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-bold uppercase tracking-wide transition-colors',
+                salesSub === 'shippedsalesbyproduct' ? 'bg-orange-500/15 text-orange-400 ring-1 ring-orange-500/30' : 'text-white/50 hover:bg-white/5 hover:text-white'
+              )}
+            >
+              <Package className="w-4 h-4" />Shipped Sales by Product
+            </button>
           </div>
           {salesSub === 'shippedsales' && <ShippedSalesPanel />}
+          {salesSub === 'shippedsalesbyproduct' && (
+            <div className="flex-1 flex items-center justify-center text-white/20 text-sm">
+              Shipped Sales by Product — coming soon
+            </div>
+          )}
         </div>
       ) : activeTab === 'ecomrestock' ? (
         <EcomRestockPanel />
