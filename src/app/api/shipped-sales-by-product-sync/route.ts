@@ -120,8 +120,10 @@ function parseCsvData(text: string): ProductRow[] {
   const iProdName = find('description', 'product name', 'product_name')
   const iQty      = find('quantity', 'qty shipped', 'qty')
   const iPrice    = find('amount per unit', 'unit price')
-  const iAmount   = find('amount')
-  const iSubtotal = find('subtotal', 'total')
+  // Finale CSV labels this "Subtotal"; Excel download labels it "Amount" — both = qty × unit price
+  const iAmount   = find('amount', 'subtotal')
+  // Order-level subtotal (not used for revenue, but kept for completeness)
+  const iSubtotal = find('order subtotal')
 
   const rows: ProductRow[] = []
   for (const line of lines.slice(1)) {
