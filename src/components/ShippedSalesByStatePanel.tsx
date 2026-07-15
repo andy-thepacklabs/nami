@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useEffect, useMemo } from 'react'
-import { RefreshCw, ChevronDown, ChevronRight, MapPin, AlertTriangle } from 'lucide-react'
+import { RefreshCw, ChevronDown, ChevronRight, MapPin, AlertTriangle, Zap } from 'lucide-react'
 
 interface StateRow    { state: string; orders: number; qty: number; revenue: number }
 interface ProductRow  { state: string; product_id: string; product: string; qty: number; revenue: number }
@@ -29,6 +29,8 @@ export default function ShippedSalesByStatePanel() {
   const [expandedStates, setExpandedStates]   = useState<Set<string>>(new Set())
   const [expandedMonths, setExpandedMonths]   = useState<Set<string>>(new Set())
   const [search, setSearch] = useState('')
+  const [syncing, setSyncing]   = useState(false)
+  const [syncMsg, setSyncMsg]   = useState<string | null>(null)
 
   async function loadThisMonth() {
     setLoading(true); setError(null)
@@ -57,6 +59,34 @@ export default function ShippedSalesByStatePanel() {
     if (activeTab === 'bymonth' && byMonthAgg.length === 0) loadByMonth()
     if (activeTab === 'thismonth' && thisMonthAgg.length === 0) loadThisMonth()
   }, [activeTab])
+
+  async function handleHistoricalSync() {
+    setSyncing(true); setSyncMsg(null); setError(null)
+    try {
+      await fetch('/api/shipped-sales-by-product-sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ historical: true }),
+      })
+      const poll = async () => {
+        try {
+          const p = await fetch('/api/shipped-sales-by-product-sync').then(r => r.json())
+          if (p.status === 'done') {
+            setSyncMsg(`Synced Jan–Jun 2026`)
+            setByMonthAgg([]); setByMonthProducts([])
+            await loadByMonth()
+            setSyncing(false)
+          } else if (p.status === 'error') {
+            setError(p.error ?? 'Sync failed'); setSyncing(false)
+          } else {
+            setSyncMsg(p.progress ?? 'Syncing…')
+            setTimeout(poll, 2500)
+          }
+        } catch { setTimeout(poll, 2500) }
+      }
+      setTimeout(poll, 2000)
+    } catch (e) { setError(String(e)); setSyncing(false) }
+  }
 
   function toggleState(key: string) {
     setExpandedStates(p => { const n = new Set(p); n.has(key) ? n.delete(key) : n.add(key); return n })
@@ -143,6 +173,13 @@ export default function ShippedSalesByStatePanel() {
               placeholder="Search state or product…"
               className="bg-white/5 border border-white/10 rounded px-3 py-1.5 text-xs text-white placeholder-white/30 outline-none focus:border-white/30 w-48" />
           )}
+          {activeTab === 'bymonth' && (
+            <button onClick={handleHistoricalSync} disabled={syncing}
+              className="flex items-center gap-1.5 text-xs bg-orange-500/15 text-orange-400 hover:bg-orange-500/25 border border-orange-500/30 rounded px-3 py-1.5 transition-colors font-semibold">
+              <Zap className={`w-3.5 h-3.5 ${syncing ? 'animate-pulse' : ''}`} />
+              {syncing ? (syncMsg ?? 'Syncing…') : 'Sync Jan–Jun 2026'}
+            </button>
+          )}
           <button onClick={() => activeTab === 'bymonth' ? loadByMonth() : loadThisMonth()} disabled={loading}
             className="flex items-center gap-1.5 text-xs text-white/60 hover:text-white border border-white/10 hover:border-white/20 rounded px-3 py-1.5 transition-colors">
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
@@ -150,6 +187,9 @@ export default function ShippedSalesByStatePanel() {
         </div>
       </div>
 
+      {syncMsg && !syncing && (
+        <div className="bg-green-900/20 border border-green-800/40 rounded-lg px-4 py-2 text-green-400 text-xs">{syncMsg}</div>
+      )}
       {error && (
         <div className="bg-red-900/20 border border-red-800/40 rounded-lg px-4 py-2 text-red-400 text-xs flex items-center gap-2">
           <AlertTriangle className="w-3.5 h-3.5 shrink-0" />{error}
