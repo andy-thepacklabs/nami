@@ -29,6 +29,8 @@ import OpenPoPanel from '@/components/OpenPoPanel'
 import ShippedSalesPanel from '@/components/ShippedSalesPanel'
 import ShippedSalesByProductPanel from '@/components/ShippedSalesByProductPanel'
 import ShippedSalesByStatePanel from '@/components/ShippedSalesByStatePanel'
+import SpendingPanel from '@/components/SpendingPanel'
+import THCComparisonPanel from '@/components/THCComparisonPanel'
 
 interface HotBin { bin: string; count: number; critical_count: number }
 
@@ -54,9 +56,10 @@ type SleeveRow = WohRow
 
 export default function Dashboard() {
   const [activeTab, setActiveTab] = useState<'splash' | 'home' | 'dashboard' | 'reconcile' | 'cyclecount' | 'finalereport' | 'ecomrestock' | 'openpo' | 'sales'>('home')
+  const [purchaseSub, setPurchaseSub] = useState<'openpo' | 'spending'>('openpo')
   const [wohTab, setWohTab] = useState<'sleeve' | 'display' | 'mylar' | 'tube' | 'cone' | 'label' | 'grinder' | 'lab' | 'marketing' | 'insert' | null>(null)
   const [dashSub, setDashSub] = useState<'woh' | 'reorder' | 'invops'>('woh')
-  const [salesSub, setSalesSub] = useState<'shippedsales' | 'shippedsalesbyproduct' | 'shippedsalesbystate'>('shippedsales')
+  const [salesSub, setSalesSub] = useState<'shippedsales' | 'shippedsalesbyproduct' | 'shippedsalesbystate' | 'thccomparison'>('shippedsales')
   const [labelRows, setLabelRows] = useState<WohRow[]>([])
   const [labelLoading, setLabelLoading] = useState(false)
   const [labelSearch, setLabelSearch] = useState('')
@@ -196,9 +199,7 @@ export default function Dashboard() {
           <SideNavItem tab="dashboard"   icon={<Package className="w-4 h-4 shrink-0" />}         label="Inventory" />
           <SideNavItem tab="reconcile"   icon={<ClipboardCheck className="w-4 h-4 shrink-0" />}  label="Reconcile" />
           <div className="pt-2 border-t border-white/10 space-y-1 mt-2">
-            <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-bold text-white/20 cursor-not-allowed" disabled>
-              <ShoppingCart className="w-4 h-4 shrink-0" /><span>Purchasing</span>
-            </button>
+            <SideNavItem tab="openpo" icon={<ShoppingCart className="w-4 h-4 shrink-0" />} label="Purchasing" />
             <SideNavItem tab="sales" icon={<TrendingUp className="w-4 h-4 shrink-0" />} label="Sales" />
             <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-bold text-white/20 cursor-not-allowed" disabled>
               <Bell className="w-4 h-4 shrink-0" /><span>Alerts</span>
@@ -259,7 +260,29 @@ export default function Dashboard() {
           <FinaleReportPanel onClose={() => setActiveTab('dashboard')} />
         </div>
       ) : activeTab === 'openpo' ? (
-        <OpenPoPanel />
+        <div className="flex-1 flex flex-col overflow-hidden">
+          {/* Purchasing sub-tabs */}
+          <div className="flex items-center gap-2 px-6 py-3 border-b border-orange-900/30 bg-black shrink-0">
+            <button
+              onClick={() => setPurchaseSub('openpo')}
+              className={cn('flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-bold uppercase tracking-wide transition-colors',
+                purchaseSub === 'openpo' ? 'bg-orange-500/15 text-orange-400 ring-1 ring-orange-500/30' : 'text-white/50 hover:bg-white/5 hover:text-white'
+              )}
+            >
+              <ShoppingCart className="w-4 h-4" />Open PO
+            </button>
+            <button
+              onClick={() => setPurchaseSub('spending')}
+              className={cn('flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-bold uppercase tracking-wide transition-colors',
+                purchaseSub === 'spending' ? 'bg-orange-500/15 text-orange-400 ring-1 ring-orange-500/30' : 'text-white/50 hover:bg-white/5 hover:text-white'
+              )}
+            >
+              <TrendingUp className="w-4 h-4" />Spending
+            </button>
+          </div>
+          {purchaseSub === 'openpo' && <OpenPoPanel />}
+          {purchaseSub === 'spending' && <SpendingPanel />}
+        </div>
       ) : activeTab === 'sales' ? (
         <div className="flex-1 flex flex-col overflow-hidden">
           {/* Sales sub-tabs */}
@@ -288,10 +311,19 @@ export default function Dashboard() {
             >
               <MapPin className="w-4 h-4" />Shipped Sales by State
             </button>
+            <button
+              onClick={() => setSalesSub('thccomparison')}
+              className={cn('flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-bold uppercase tracking-wide transition-colors',
+                salesSub === 'thccomparison' ? 'bg-orange-500/15 text-orange-400 ring-1 ring-orange-500/30' : 'text-white/50 hover:bg-white/5 hover:text-white'
+              )}
+            >
+              <TrendingUp className="w-4 h-4" />THCA vs THCP
+            </button>
           </div>
           {salesSub === 'shippedsales' && <ShippedSalesPanel />}
           {salesSub === 'shippedsalesbyproduct' && <ShippedSalesByProductPanel />}
           {salesSub === 'shippedsalesbystate' && <ShippedSalesByStatePanel />}
+          {salesSub === 'thccomparison' && <THCComparisonPanel />}
         </div>
       ) : activeTab === 'ecomrestock' ? (
         <EcomRestockPanel />
