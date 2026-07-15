@@ -28,6 +28,7 @@ import InventoryOpsPanel from '@/components/InventoryOpsPanel'
 import OpenPoPanel from '@/components/OpenPoPanel'
 import ShippedSalesPanel from '@/components/ShippedSalesPanel'
 import ShippedSalesByProductPanel from '@/components/ShippedSalesByProductPanel'
+import ShippedSalesByStatePanel from '@/components/ShippedSalesByStatePanel'
 
 interface HotBin { bin: string; count: number; critical_count: number }
 
@@ -55,7 +56,7 @@ export default function Dashboard() {
   const [activeTab, setActiveTab] = useState<'splash' | 'home' | 'dashboard' | 'reconcile' | 'cyclecount' | 'finalereport' | 'ecomrestock' | 'openpo' | 'sales'>('home')
   const [wohTab, setWohTab] = useState<'sleeve' | 'display' | 'mylar' | 'tube' | 'cone' | 'label' | 'grinder' | 'lab' | 'marketing' | 'insert' | null>(null)
   const [dashSub, setDashSub] = useState<'woh' | 'reorder' | 'invops'>('woh')
-  const [salesSub, setSalesSub] = useState<'shippedsales' | 'shippedsalesbyproduct'>('shippedsales')
+  const [salesSub, setSalesSub] = useState<'shippedsales' | 'shippedsalesbyproduct' | 'shippedsalesbystate'>('shippedsales')
   const [labelRows, setLabelRows] = useState<WohRow[]>([])
   const [labelLoading, setLabelLoading] = useState(false)
   const [labelSearch, setLabelSearch] = useState('')
@@ -279,9 +280,18 @@ export default function Dashboard() {
             >
               <Package className="w-4 h-4" />Shipped Sales by Product
             </button>
+            <button
+              onClick={() => setSalesSub('shippedsalesbystate')}
+              className={cn('flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-bold uppercase tracking-wide transition-colors',
+                salesSub === 'shippedsalesbystate' ? 'bg-orange-500/15 text-orange-400 ring-1 ring-orange-500/30' : 'text-white/50 hover:bg-white/5 hover:text-white'
+              )}
+            >
+              <MapPin className="w-4 h-4" />Shipped Sales by State
+            </button>
           </div>
           {salesSub === 'shippedsales' && <ShippedSalesPanel />}
           {salesSub === 'shippedsalesbyproduct' && <ShippedSalesByProductPanel />}
+          {salesSub === 'shippedsalesbystate' && <ShippedSalesByStatePanel />}
         </div>
       ) : activeTab === 'ecomrestock' ? (
         <EcomRestockPanel />

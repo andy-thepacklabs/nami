@@ -7,20 +7,21 @@ export const dynamic = 'force-dynamic'
 function ensureSchema(db: ReturnType<typeof getDb>) {
   db.exec(`
     CREATE TABLE IF NOT EXISTS shipped_sales_by_product (
-      order_id     TEXT,
-      product_id   TEXT,
-      product_name TEXT,
-      source       TEXT,
-      ship_date    TEXT,
-      qty_shipped  REAL NOT NULL DEFAULT 0,
-      unit_price   REAL NOT NULL DEFAULT 0,
-      amount       REAL NOT NULL DEFAULT 0,
-      subtotal     REAL NOT NULL DEFAULT 0,
-      imported_at  TEXT NOT NULL DEFAULT (datetime('now'))
+      order_id      TEXT,
+      product_id    TEXT,
+      product_name  TEXT,
+      source        TEXT,
+      ship_to_state TEXT,
+      ship_date     TEXT,
+      qty_shipped   REAL NOT NULL DEFAULT 0,
+      unit_price    REAL NOT NULL DEFAULT 0,
+      amount        REAL NOT NULL DEFAULT 0,
+      subtotal      REAL NOT NULL DEFAULT 0,
+      imported_at   TEXT NOT NULL DEFAULT (datetime('now'))
     )
   `)
-  // migrate existing tables that lack the amount column
   try { db.exec(`ALTER TABLE shipped_sales_by_product ADD COLUMN amount REAL NOT NULL DEFAULT 0`) } catch {}
+  try { db.exec(`ALTER TABLE shipped_sales_by_product ADD COLUMN ship_to_state TEXT`) } catch {}
 }
 
 function parseNum(v: unknown): number {
@@ -53,8 +54,8 @@ export async function POST(req: NextRequest) {
 
     const stmt = db.prepare(`
       INSERT INTO shipped_sales_by_product
-        (order_id, product_id, product_name, source, ship_date, qty_shipped, unit_price, amount, subtotal)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (order_id, product_id, product_name, source, ship_to_state, ship_date, qty_shipped, unit_price, amount, subtotal)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `)
 
     const buf = await file.arrayBuffer()
@@ -75,6 +76,7 @@ export async function POST(req: NextRequest) {
     const iProdName = col('description', 'product name', 'product_name', 'item name', 'name')
     const iQty      = col('quantity', 'qty shipped', 'qty_shipped', 'qty')
     const iPrice    = col('amount per unit', 'unit price', 'unit_price', 'price')
+    const iState    = col('ship to state / region', 'ship to state', 'state', 'ship_to_state')
     const iAmount   = col('amount')
     const iSubtotal = col('subtotal', 'sub total', 'total')
 
@@ -93,6 +95,7 @@ export async function POST(req: NextRequest) {
         productId,
         productName,
         iSource   >= 0 ? String(row[iSource]   ?? '').trim() : '',
+        iState    >= 0 ? String(row[iState]    ?? '').trim() : '',
         iShipDate >= 0 ? parseDate(row[iShipDate]) : '',
         iQty      >= 0 ? parseNum(row[iQty])      : 0,
         iPrice    >= 0 ? parseNum(row[iPrice])     : 0,

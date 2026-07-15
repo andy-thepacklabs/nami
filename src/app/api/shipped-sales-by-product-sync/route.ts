@@ -102,7 +102,7 @@ function parseDate(s: string): string {
 }
 
 interface ProductRow {
-  source: string; orderId: string; shipDate: string
+  source: string; shipToState: string; orderId: string; shipDate: string
   productId: string; productName: string
   qty: number; unitPrice: number; amount: number; subtotal: number
 }
@@ -120,6 +120,7 @@ function parseCsvData(text: string): ProductRow[] {
   const iProdName = find('description', 'product name', 'product_name')
   const iQty      = find('quantity', 'qty shipped', 'qty')
   const iPrice    = find('amount per unit', 'unit price')
+  const iState    = find('ship to state / region', 'ship to state', 'state')
   // Finale CSV labels this "Subtotal"; Excel download labels it "Amount" — both = qty × unit price
   const iAmount   = find('amount', 'subtotal')
   // Order-level subtotal (not used for revenue, but kept for completeness)
@@ -132,6 +133,7 @@ function parseCsvData(text: string): ProductRow[] {
     if (!productId) continue
     rows.push({
       source:      iSource   >= 0 ? v[iSource]            : '',
+      shipToState: iState    >= 0 ? v[iState]             : '',
       orderId:     iOrderId  >= 0 ? v[iOrderId]           : '',
       shipDate:    iShipDate >= 0 ? parseDate(v[iShipDate]): '',
       productId,
@@ -149,13 +151,14 @@ function ensureSchema(db: ReturnType<typeof getDb>) {
   db.exec(`
     CREATE TABLE IF NOT EXISTS shipped_sales_by_product (
       order_id TEXT, product_id TEXT, product_name TEXT, source TEXT,
-      ship_date TEXT, qty_shipped REAL NOT NULL DEFAULT 0,
+      ship_to_state TEXT, ship_date TEXT, qty_shipped REAL NOT NULL DEFAULT 0,
       unit_price REAL NOT NULL DEFAULT 0, amount REAL NOT NULL DEFAULT 0,
       subtotal REAL NOT NULL DEFAULT 0,
       imported_at TEXT NOT NULL DEFAULT (datetime('now'))
     )
   `)
   try { db.exec(`ALTER TABLE shipped_sales_by_product ADD COLUMN amount REAL NOT NULL DEFAULT 0`) } catch {}
+  try { db.exec(`ALTER TABLE shipped_sales_by_product ADD COLUMN ship_to_state TEXT`) } catch {}
 }
 
 const syncState = {
@@ -188,10 +191,10 @@ async function syncMonth(base64Auth: string, monthOffset: number, db: ReturnType
 
   const stmt = db.prepare(`
     INSERT INTO shipped_sales_by_product
-      (order_id, product_id, product_name, source, ship_date, qty_shipped, unit_price, amount, subtotal)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (order_id, product_id, product_name, source, ship_to_state, ship_date, qty_shipped, unit_price, amount, subtotal)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `)
-  for (const r of rows) stmt.run(r.orderId, r.productId, r.productName, r.source, r.shipDate, r.qty, r.unitPrice, r.amount, r.subtotal)
+  for (const r of rows) stmt.run(r.orderId, r.productId, r.productName, r.source, r.shipToState, r.shipDate, r.qty, r.unitPrice, r.amount, r.subtotal)
   return rows.length
 }
 
