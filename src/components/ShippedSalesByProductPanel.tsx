@@ -265,8 +265,8 @@ export default function ShippedSalesByProductPanel() {
             <table className="w-full text-xs border-collapse">
               <thead className="sticky top-0 bg-[#0d0d0d] z-10">
                 <tr>
-                  <th className="text-left text-white/40 uppercase tracking-widest px-4 py-2.5 border-b border-white/10 font-medium">Description</th>
                   <th className="text-left text-white/40 uppercase tracking-widest px-4 py-2.5 border-b border-white/10 font-medium">Product ID</th>
+                  <th className="text-left text-white/40 uppercase tracking-widest px-4 py-2.5 border-b border-white/10 font-medium">Description</th>
                   <th className="text-right text-white/40 uppercase tracking-widest px-4 py-2.5 border-b border-white/10 font-medium">Qty Shipped</th>
                   <th className="text-right text-white/40 uppercase tracking-widest px-4 py-2.5 border-b border-white/10 font-medium">Total Revenue</th>
                 </tr>
@@ -274,10 +274,10 @@ export default function ShippedSalesByProductPanel() {
               <tbody>
                 {filteredThis.map((r, i) => (
                   <tr key={i} className="border-b border-white/5 hover:bg-white/[0.04]">
+                    <td className="px-4 py-2.5 font-mono text-orange-400/70 text-[11px]">{r.product_id || '—'}</td>
                     <td className="px-4 py-2.5 text-white/80 max-w-xs">
                       <span className="truncate block">{r.product || '—'}</span>
                     </td>
-                    <td className="px-4 py-2.5 font-mono text-orange-400/70 text-[11px]">{r.product_id || '—'}</td>
                     <td className="px-4 py-2.5 text-right text-white/50">{r.qty.toLocaleString()}</td>
                     <td className="px-4 py-2.5 text-right font-mono font-bold text-green-400">
                       {r.revenue > 0 ? fmtMoney(r.revenue) : '—'}
@@ -314,8 +314,8 @@ export default function ShippedSalesByProductPanel() {
                   <table className="w-full text-xs border-collapse border-t border-white/10">
                     <thead>
                       <tr className="bg-black/30">
-                        <th className="text-left text-white/30 uppercase tracking-widest px-4 py-2 font-medium">Description</th>
                         <th className="text-left text-white/30 uppercase tracking-widest px-4 py-2 font-medium">Product ID</th>
+                        <th className="text-left text-white/30 uppercase tracking-widest px-4 py-2 font-medium">Description</th>
                         <th className="text-right text-white/30 uppercase tracking-widest px-4 py-2 font-medium">Qty</th>
                         <th className="text-right text-white/30 uppercase tracking-widest px-4 py-2 font-medium">Revenue</th>
                       </tr>
@@ -323,10 +323,10 @@ export default function ShippedSalesByProductPanel() {
                     <tbody>
                       {rows.map((r, i) => (
                         <tr key={i} className="border-t border-white/5 hover:bg-white/[0.03]">
+                          <td className="px-4 py-2 font-mono text-orange-400/60 text-[11px]">{r.product_id || '—'}</td>
                           <td className="px-4 py-2 text-white/70 max-w-xs">
                             <span className="truncate block">{r.product || '—'}</span>
                           </td>
-                          <td className="px-4 py-2 font-mono text-orange-400/60 text-[11px]">{r.product_id || '—'}</td>
                           <td className="px-4 py-2 text-right text-white/40">{r.qty.toLocaleString()}</td>
                           <td className="px-4 py-2 text-right font-mono font-bold text-green-400">
                             {r.revenue > 0 ? fmtMoney(r.revenue) : '—'}
