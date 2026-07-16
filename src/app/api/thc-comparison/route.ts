@@ -4,16 +4,21 @@ import { getDb } from '@/lib/db'
 export const dynamic = 'force-dynamic'
 
 /*
-  Classifies shipped_sales_by_product rows as THCA or THCP:
+  Classifies shipped_sales_by_product rows by product line:
   - THCP: product_name LIKE '%THCP%'
-  - THCA: product_name LIKE '%THCA%' OR product_name LIKE '%Liquid Diamond%'
+  - THCA: product_name LIKE '%THCA%' OR '%Liquid Diamond%'
+  - Gummies: Functional Euphoria, Functional Microdose, Froot Jam, Cereal Crunchies
 */
 
 const COMPOUND_EXPR = `
   CASE
-    WHEN product_name LIKE '%THCP%'           THEN 'THCP'
-    WHEN product_name LIKE '%THCA%'           THEN 'THCA'
-    WHEN product_name LIKE '%Liquid Diamond%' THEN 'THCA'
+    WHEN product_name LIKE '%Functional Euphoria%'   THEN 'Functional Euphoria'
+    WHEN product_name LIKE '%Functional Microdose%'  THEN 'Functional Microdose'
+    WHEN product_name LIKE '%Froot Jam%'             THEN 'Froot Jam'
+    WHEN product_name LIKE '%Cereal Crunch%'         THEN 'Cereal Crunchies'
+    WHEN product_name LIKE '%THCP%'                  THEN 'THCP'
+    WHEN product_name LIKE '%THCA%'                  THEN 'THCA'
+    WHEN product_name LIKE '%Liquid Diamond%'        THEN 'THCA'
     ELSE NULL
   END
 `
