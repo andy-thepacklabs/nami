@@ -347,7 +347,12 @@ function Snapshot({
 
 // ─── Root panel ───────────────────────────────────────────────────────────────
 export default function THCComparisonPanel() {
-  const [subTab, setSubTab] = useState<'thismonth' | 'bymonth'>('thismonth')
+  const [subTab, setSubTab] = useState<'today' | 'thismonth' | 'bymonth'>('today')
+
+  const [tdRevenue,   setTdRevenue]   = useState<RevenueRow[]>([])
+  const [tdProducts,  setTdProducts]  = useState<ProductRow[]>([])
+  const [tdStates,    setTdStates]    = useState<StateRow[]>([])
+  const [tdLoaded,    setTdLoaded]    = useState(false)
 
   const [tmRevenue,   setTmRevenue]   = useState<RevenueRow[]>([])
   const [tmProducts,  setTmProducts]  = useState<ProductRow[]>([])
@@ -374,7 +379,7 @@ export default function THCComparisonPanel() {
         const p = await fetch('/api/shipped-sales-by-product-sync').then(r => r.json())
         if (p.status === 'done') {
           setSyncMsg('Done!'); setSyncing(false)
-          setTmLoaded(false); setBmLoaded(false)
+          setTdLoaded(false); setTmLoaded(false); setBmLoaded(false)
         } else if (p.status === 'error') {
           setSyncMsg(p.error ?? 'Sync failed'); setSyncing(false)
         } else {
@@ -387,6 +392,11 @@ export default function THCComparisonPanel() {
   }
 
   useEffect(() => {
+    if (subTab === 'today' && !tdLoaded) {
+      fetch('/api/thc-comparison?mode=today')
+        .then(r => r.json())
+        .then(d => { setTdRevenue(d.revenue ?? []); setTdProducts(d.byProduct ?? []); setTdStates(d.byState ?? []); setTdLoaded(true) })
+    }
     if (subTab === 'thismonth' && !tmLoaded) {
       fetch('/api/thc-comparison')
         .then(r => r.json())
@@ -397,7 +407,7 @@ export default function THCComparisonPanel() {
         .then(r => r.json())
         .then(d => { setBmRevenue(d.revenue ?? []); setBmProducts(d.byProduct ?? []); setBmStates(d.byState ?? []); setBmLoaded(true) })
     }
-  }, [subTab, tmLoaded, bmLoaded])
+  }, [subTab, tdLoaded, tmLoaded, bmLoaded])
 
   const months = useMemo(() =>
     [...new Set(bmRevenue.map(r => r.month_key ?? ''))].filter(Boolean).sort((a, b) => b.localeCompare(a)),
@@ -408,14 +418,14 @@ export default function THCComparisonPanel() {
     <div className="flex-1 flex flex-col overflow-hidden">
       {/* Sub-tab bar */}
       <div className="flex items-center gap-2 px-6 py-3 border-b border-orange-900/30 bg-black shrink-0">
-        {(['thismonth', 'bymonth'] as const).map(t => (
+        {(['today', 'thismonth', 'bymonth'] as const).map(t => (
           <button key={t} onClick={() => setSubTab(t)}
             className={cn('px-5 py-2.5 rounded-lg text-sm font-bold uppercase tracking-wide transition-colors',
               subTab === t
                 ? 'bg-orange-500/15 text-orange-400 ring-1 ring-orange-500/30'
                 : 'text-white/50 hover:bg-white/5 hover:text-white'
             )}>
-            {t === 'thismonth' ? 'This Month' : 'By Month'}
+            {t === 'today' ? 'Today' : t === 'thismonth' ? 'This Month' : 'By Month'}
           </button>
         ))}
         <div className="flex-1" />
@@ -433,6 +443,17 @@ export default function THCComparisonPanel() {
       </div>
 
       <div className="flex-1 overflow-auto px-6 py-6">
+
+        {/* ── Today ── */}
+        {subTab === 'today' && (
+          tdRevenue.length === 0 ? (
+            <div className="text-center text-sm text-orange-900 py-16">
+              No sales today — data comes from synced shipped sales.
+            </div>
+          ) : (
+            <Snapshot revenue={tdRevenue} byProduct={tdProducts} byState={tdStates} />
+          )
+        )}
 
         {/* ── This Month ── */}
         {subTab === 'thismonth' && (

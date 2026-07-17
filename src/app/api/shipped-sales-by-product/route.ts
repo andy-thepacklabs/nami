@@ -125,6 +125,23 @@ export async function GET(req: NextRequest) {
     const url  = new URL(req.url)
     const mode = url.searchParams.get('mode')
 
+    if (mode === 'today') {
+      const now = new Date()
+      const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+      const agg = db.prepare(`
+        SELECT
+          COALESCE(NULLIF(product_name,''), product_id, '—') AS product,
+          product_id,
+          SUM(qty_shipped) AS qty,
+          SUM(amount)      AS revenue
+        FROM shipped_sales_by_product
+        WHERE ship_date = ?
+        GROUP BY product_id
+        ORDER BY revenue DESC
+      `).all(today)
+      return NextResponse.json({ agg, meta })
+    }
+
     if (mode === 'bymonth') {
       const agg = db.prepare(`
         SELECT

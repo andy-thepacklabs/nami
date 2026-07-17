@@ -25,10 +25,22 @@ export default function ShippedSalesByProductPanel() {
   const [syncing, setSyncing]           = useState(false)
   const [syncMsg, setSyncMsg]           = useState<string | null>(null)
   const [error, setError]               = useState<string | null>(null)
-  const [activeTab, setActiveTab]       = useState<'thismonth' | 'bymonth'>('thismonth')
+  const [activeTab, setActiveTab]       = useState<'today' | 'thismonth' | 'bymonth'>('today')
+  const [todayAgg, setTodayAgg]         = useState<AggRow[]>([])
+  const [todayLoaded, setTodayLoaded]   = useState(false)
   const [expanded, setExpanded]         = useState<Set<string>>(new Set())
   const [search, setSearch]             = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
+
+  async function loadToday() {
+    setLoading(true); setError(null)
+    try {
+      const res = await fetch('/api/shipped-sales-by-product?mode=today')
+      const data = await res.json()
+      setTodayAgg(data.agg ?? []); setMeta(data.meta ?? null); setTodayLoaded(true)
+    } catch (e) { setError(String(e)) }
+    finally { setLoading(false) }
+  }
 
   async function loadThisMonth() {
     setLoading(true); setError(null)
@@ -52,8 +64,9 @@ export default function ShippedSalesByProductPanel() {
     finally { setLoading(false) }
   }
 
-  useEffect(() => { loadThisMonth() }, [])
+  useEffect(() => { loadToday() }, [])
   useEffect(() => {
+    if (activeTab === 'today' && !todayLoaded) loadToday()
     if (activeTab === 'bymonth' && byMonthAgg.length === 0) loadByMonth()
     if (activeTab === 'thismonth' && thisMonthAgg.length === 0) loadThisMonth()
   }, [activeTab])
@@ -129,11 +142,12 @@ export default function ShippedSalesByProductPanel() {
     setExpanded(prev => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n })
   }
 
+  const baseAgg = activeTab === 'today' ? todayAgg : thisMonthAgg
   const filteredThis = useMemo(() => {
-    if (!search) return thisMonthAgg
+    if (!search) return baseAgg
     const q = search.toLowerCase()
-    return thisMonthAgg.filter(r => r.product.toLowerCase().includes(q) || r.product_id.toLowerCase().includes(q))
-  }, [thisMonthAgg, search])
+    return baseAgg.filter(r => r.product.toLowerCase().includes(q) || r.product_id.toLowerCase().includes(q))
+  }, [baseAgg, search])
 
   const monthMap = useMemo(() => {
     const q = search.toLowerCase()
@@ -147,7 +161,7 @@ export default function ShippedSalesByProductPanel() {
     return map
   }, [byMonthAgg, search])
 
-  const hasData     = activeTab === 'thismonth' ? thisMonthAgg.length > 0 : byMonthAgg.length > 0
+  const hasData     = activeTab === 'bymonth' ? byMonthAgg.length > 0 : baseAgg.length > 0
   const statQty     = activeTab === 'bymonth' ? byMonthAgg.reduce((s, r) => s + r.qty, 0)     : filteredThis.reduce((s, r) => s + r.qty, 0)
   const statRevenue = activeTab === 'bymonth' ? byMonthAgg.reduce((s, r) => s + r.revenue, 0) : filteredThis.reduce((s, r) => s + r.revenue, 0)
 
@@ -156,18 +170,14 @@ export default function ShippedSalesByProductPanel() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1">
-          <button
-            onClick={() => setActiveTab('thismonth')}
-            className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${activeTab === 'thismonth' ? 'bg-orange-500/15 text-orange-400' : 'text-white/40 hover:text-white hover:bg-white/5'}`}
-          >
-            This Month Sale
-          </button>
-          <button
-            onClick={() => setActiveTab('bymonth')}
-            className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${activeTab === 'bymonth' ? 'bg-orange-500/15 text-orange-400' : 'text-white/40 hover:text-white hover:bg-white/5'}`}
-          >
-            By Month
-          </button>
+          {(['today', 'thismonth', 'bymonth'] as const).map(t => (
+            <button key={t}
+              onClick={() => setActiveTab(t)}
+              className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${activeTab === t ? 'bg-orange-500/15 text-orange-400' : 'text-white/40 hover:text-white hover:bg-white/5'}`}
+            >
+              {t === 'today' ? 'Today' : t === 'thismonth' ? 'This Month Sale' : 'By Month'}
+            </button>
+          ))}
           <p className="text-white/20 text-xs ml-3">
             {meta?.last_import ? `Updated ${new Date(meta.last_import).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}` : 'No data'}
           </p>
@@ -181,7 +191,7 @@ export default function ShippedSalesByProductPanel() {
               className="bg-white/5 border border-white/10 rounded px-3 py-1.5 text-xs text-white placeholder-white/30 outline-none focus:border-white/30 w-48"
             />
           )}
-          {activeTab === 'thismonth' && (
+          {(activeTab === 'today' || activeTab === 'thismonth') && (
             <button
               onClick={handleSync}
               disabled={syncing}
@@ -211,7 +221,7 @@ export default function ShippedSalesByProductPanel() {
             {uploading ? 'Importing…' : 'Upload CSV / Excel'}
           </button>
           <button
-            onClick={() => activeTab === 'bymonth' ? loadByMonth() : loadThisMonth()}
+            onClick={() => activeTab === 'bymonth' ? loadByMonth() : activeTab === 'today' ? loadToday() : loadThisMonth()}
             disabled={loading}
             className="flex items-center gap-1.5 text-xs text-white/60 hover:text-white border border-white/10 hover:border-white/20 rounded px-3 py-1.5 transition-colors"
           >
@@ -260,7 +270,7 @@ export default function ShippedSalesByProductPanel() {
               <p className="text-xs">Click "Sync from Finale" or upload "Andy Custom Report - Shipped Sales" Excel</p>
             </div>
           </div>
-        ) : activeTab === 'thismonth' ? (
+        ) : activeTab !== 'bymonth' ? (
           <div className="border border-white/10 rounded-lg overflow-hidden">
             <table className="w-full text-xs border-collapse">
               <thead className="sticky top-0 bg-[#0d0d0d] z-10">

@@ -34,6 +34,12 @@ export async function GET(req: NextRequest) {
       : ''
     const ymWhere = mode === 'bymonth'
       ? `WHERE month_key != '' AND compound IS NOT NULL`
+      : mode === 'today'
+      ? (() => {
+          const now = new Date()
+          const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+          return `WHERE ship_date = '${today}' AND compound IS NOT NULL`
+        })()
       : (() => {
           const now = new Date()
           const ym  = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`

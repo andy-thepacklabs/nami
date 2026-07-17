@@ -15,6 +15,38 @@ export async function GET(req: NextRequest) {
     const url  = new URL(req.url)
     const mode = url.searchParams.get('mode')
 
+    if (mode === 'today') {
+      const now = new Date()
+      const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+
+      const agg = db.prepare(`
+        SELECT
+          COALESCE(NULLIF(ship_to_state,''), 'Unknown') AS state,
+          COUNT(DISTINCT order_id)                       AS orders,
+          SUM(qty_shipped)                               AS qty,
+          SUM(amount)                                    AS revenue
+        FROM shipped_sales_by_product
+        WHERE ship_date = ?
+        GROUP BY state
+        ORDER BY revenue DESC
+      `).all(today)
+
+      const products = db.prepare(`
+        SELECT
+          COALESCE(NULLIF(ship_to_state,''), 'Unknown')          AS state,
+          product_id,
+          COALESCE(NULLIF(product_name,''), product_id, '—')     AS product,
+          SUM(qty_shipped)                                        AS qty,
+          SUM(amount)                                             AS revenue
+        FROM shipped_sales_by_product
+        WHERE ship_date = ?
+        GROUP BY state, product_id
+        ORDER BY state, revenue DESC
+      `).all(today)
+
+      return NextResponse.json({ agg, products, meta })
+    }
+
     if (mode === 'bymonth') {
       // State summary per month
       const agg = db.prepare(`

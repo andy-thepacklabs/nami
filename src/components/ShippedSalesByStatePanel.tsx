@@ -25,12 +25,25 @@ export default function ShippedSalesByStatePanel() {
   const [meta, setMeta]     = useState<Meta | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError]   = useState<string | null>(null)
-  const [activeTab, setActiveTab] = useState<'thismonth' | 'bymonth'>('thismonth')
+  const [activeTab, setActiveTab] = useState<'today' | 'thismonth' | 'bymonth'>('today')
+  const [todayAgg, setTodayAgg]               = useState<StateRow[]>([])
+  const [todayProducts, setTodayProducts]     = useState<ProductRow[]>([])
+  const [todayLoaded, setTodayLoaded]         = useState(false)
   const [expandedStates, setExpandedStates]   = useState<Set<string>>(new Set())
   const [expandedMonths, setExpandedMonths]   = useState<Set<string>>(new Set())
   const [search, setSearch] = useState('')
   const [syncing, setSyncing]   = useState(false)
   const [syncMsg, setSyncMsg]   = useState<string | null>(null)
+
+  async function loadToday() {
+    setLoading(true); setError(null)
+    try {
+      const data = await fetch('/api/shipped-sales-by-state?mode=today').then(r => r.json())
+      setTodayAgg(data.agg ?? []); setTodayProducts(data.products ?? [])
+      setMeta(data.meta ?? null); setTodayLoaded(true)
+    } catch (e) { setError(String(e)) }
+    finally { setLoading(false) }
+  }
 
   async function loadThisMonth() {
     setLoading(true); setError(null)
@@ -54,8 +67,9 @@ export default function ShippedSalesByStatePanel() {
     finally { setLoading(false) }
   }
 
-  useEffect(() => { loadThisMonth() }, [])
+  useEffect(() => { loadToday() }, [])
   useEffect(() => {
+    if (activeTab === 'today' && !todayLoaded) loadToday()
     if (activeTab === 'bymonth' && byMonthAgg.length === 0) loadByMonth()
     if (activeTab === 'thismonth' && thisMonthAgg.length === 0) loadThisMonth()
   }, [activeTab])
@@ -96,24 +110,27 @@ export default function ShippedSalesByStatePanel() {
   }
 
   // ── This Month ────────────────────────────────────────────────────────────
+  const baseStateAgg = activeTab === 'today' ? todayAgg : thisMonthAgg
+  const baseStateProducts = activeTab === 'today' ? todayProducts : thisMonthProducts
+
   const filteredStates = useMemo(() => {
-    if (!search) return thisMonthAgg
+    if (!search) return baseStateAgg
     const q = search.toLowerCase()
-    return thisMonthAgg.filter(r =>
+    return baseStateAgg.filter(r =>
       r.state.toLowerCase().includes(q) ||
-      thisMonthProducts.some(p => p.state === r.state && (p.product.toLowerCase().includes(q) || p.product_id.toLowerCase().includes(q)))
+      baseStateProducts.some(p => p.state === r.state && (p.product.toLowerCase().includes(q) || p.product_id.toLowerCase().includes(q)))
     )
-  }, [thisMonthAgg, thisMonthProducts, search])
+  }, [baseStateAgg, baseStateProducts, search])
 
   // product lookup: state → rows
   const productsByState = useMemo(() => {
     const map = new Map<string, ProductRow[]>()
-    for (const p of thisMonthProducts) {
+    for (const p of baseStateProducts) {
       if (!map.has(p.state)) map.set(p.state, [])
       map.get(p.state)!.push(p)
     }
     return map
-  }, [thisMonthProducts])
+  }, [baseStateProducts])
 
   // ── By Month ──────────────────────────────────────────────────────────────
   const monthMap = useMemo(() => {
@@ -140,7 +157,7 @@ export default function ShippedSalesByStatePanel() {
     return map
   }, [byMonthProducts])
 
-  const hasData = activeTab === 'thismonth' ? thisMonthAgg.length > 0 : byMonthAgg.length > 0
+  const hasData = activeTab === 'bymonth' ? byMonthAgg.length > 0 : baseStateAgg.length > 0
   const statRevenue = activeTab === 'bymonth'
     ? byMonthAgg.reduce((s, r) => s + r.revenue, 0)
     : filteredStates.reduce((s, r) => s + r.revenue, 0)
@@ -153,14 +170,12 @@ export default function ShippedSalesByStatePanel() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1">
-          <button onClick={() => setActiveTab('thismonth')}
-            className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${activeTab === 'thismonth' ? 'bg-orange-500/15 text-orange-400' : 'text-white/40 hover:text-white hover:bg-white/5'}`}>
-            This Month Sale
-          </button>
-          <button onClick={() => setActiveTab('bymonth')}
-            className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${activeTab === 'bymonth' ? 'bg-orange-500/15 text-orange-400' : 'text-white/40 hover:text-white hover:bg-white/5'}`}>
-            By Month
-          </button>
+          {(['today', 'thismonth', 'bymonth'] as const).map(t => (
+            <button key={t} onClick={() => setActiveTab(t)}
+              className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${activeTab === t ? 'bg-orange-500/15 text-orange-400' : 'text-white/40 hover:text-white hover:bg-white/5'}`}>
+              {t === 'today' ? 'Today' : t === 'thismonth' ? 'This Month Sale' : 'By Month'}
+            </button>
+          ))}
           <p className="text-white/20 text-xs ml-3">
             {meta?.last_import
               ? `Updated ${new Date(meta.last_import).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`
@@ -180,7 +195,7 @@ export default function ShippedSalesByStatePanel() {
               {syncing ? (syncMsg ?? 'Syncing…') : 'Sync Jan–Jun 2026'}
             </button>
           )}
-          <button onClick={() => activeTab === 'bymonth' ? loadByMonth() : loadThisMonth()} disabled={loading}
+          <button onClick={() => activeTab === 'bymonth' ? loadByMonth() : activeTab === 'today' ? loadToday() : loadThisMonth()} disabled={loading}
             className="flex items-center gap-1.5 text-xs text-white/60 hover:text-white border border-white/10 hover:border-white/20 rounded px-3 py-1.5 transition-colors">
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
           </button>
@@ -222,7 +237,7 @@ export default function ShippedSalesByStatePanel() {
               <p className="text-xs">Sync data in "Shipped Sales by Product" first</p>
             </div>
           </div>
-        ) : activeTab === 'thismonth' ? (
+        ) : activeTab !== 'bymonth' ? (
           /* ── THIS MONTH: expandable state → products ── */
           <div className="border border-white/10 rounded-lg overflow-hidden">
             {/* Table header */}

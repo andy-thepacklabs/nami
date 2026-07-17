@@ -164,7 +164,18 @@ export async function GET(req: NextRequest) {
     const meta = db.prepare(`SELECT MAX(imported_at) as last_import, COUNT(*) as total FROM shipped_sales_csv`).get() as { last_import: string | null; total: number }
 
     const url  = new URL(req.url)
-    const mode = url.searchParams.get('mode') // 'thismonth' | 'bymonth'
+    const mode = url.searchParams.get('mode') // 'today' | 'thismonth' | 'bymonth'
+
+    if (mode === 'today') {
+      const now = new Date()
+      const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+      const rows = db.prepare(`
+        SELECT * FROM shipped_sales_csv
+        WHERE COALESCE(NULLIF(ship_date,''), order_date, '') = ?
+        ORDER BY ship_date DESC, order_date DESC
+      `).all(today)
+      return NextResponse.json({ rows, meta })
+    }
 
     if (mode === 'bymonth') {
       // Return pre-aggregated: one row per (month, source)
