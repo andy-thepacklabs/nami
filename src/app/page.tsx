@@ -32,6 +32,7 @@ import ShippedSalesByProductPanel from '@/components/ShippedSalesByProductPanel'
 import ShippedSalesByStatePanel from '@/components/ShippedSalesByStatePanel'
 import SpendingPanel from '@/components/SpendingPanel'
 import THCComparisonPanel from '@/components/THCComparisonPanel'
+import BomQualityPanel from '@/components/BomQualityPanel'
 
 interface HotBin { bin: string; count: number; critical_count: number }
 
@@ -59,7 +60,7 @@ export default function Dashboard() {
   const [activeTab, setActiveTab] = useState<'splash' | 'home' | 'dashboard' | 'reconcile' | 'cyclecount' | 'finalereport' | 'ecomrestock' | 'openpo' | 'sales'>('home')
   const [purchaseSub, setPurchaseSub] = useState<'openpo' | 'spending'>('openpo')
   const [wohTab, setWohTab] = useState<'sleeve' | 'display' | 'mylar' | 'tube' | 'cone' | 'label' | 'grinder' | 'lab' | 'marketing' | 'insert' | null>(null)
-  const [dashSub, setDashSub] = useState<'woh' | 'reorder' | 'invops'>('woh')
+  const [dashSub, setDashSub] = useState<'woh' | 'reorder' | 'invops' | 'bomquality'>('woh')
   const [salesCategory, setSalesCategory] = useState<'commit' | 'shipped'>('shipped')
   const [salesSub, setSalesSub] = useState<'shippedsales' | 'shippedsalesbyproduct' | 'shippedsalesbystate' | 'thccomparison'>('shippedsales')
   const [labelRows, setLabelRows] = useState<WohRow[]>([])
@@ -435,6 +436,14 @@ export default function Dashboard() {
             >
               <Package className="w-4 h-4" />Inventory Operation
             </button>
+            <button
+              onClick={() => setDashSub('bomquality')}
+              className={cn('flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-bold uppercase tracking-wide transition-colors',
+                dashSub === 'bomquality' ? 'bg-orange-500/15 text-orange-400 ring-1 ring-orange-500/30' : 'text-white/50 hover:bg-white/5 hover:text-white'
+              )}
+            >
+              <Shield className="w-4 h-4" />BOM Quality
+            </button>
           </div>
 
           {/* Sub-tab content */}
@@ -444,6 +453,8 @@ export default function Dashboard() {
             </div>
           ) : dashSub === 'invops' ? (
             <InventoryOpsPanel />
+          ) : dashSub === 'bomquality' ? (
+            <BomQualityPanel />
           ) : (
           <div className="flex-1 flex overflow-hidden">
             {/* Left — Raw Materials panel */}
