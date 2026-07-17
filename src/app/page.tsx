@@ -26,6 +26,7 @@ import AssistantChat from '@/components/AssistantChat'
 import EcomRestockPanel from '@/components/EcomRestockPanel'
 import InventoryOpsPanel from '@/components/InventoryOpsPanel'
 import OpenPoPanel from '@/components/OpenPoPanel'
+import CommitSalePanel from '@/components/CommitSalePanel'
 import ShippedSalesPanel from '@/components/ShippedSalesPanel'
 import ShippedSalesByProductPanel from '@/components/ShippedSalesByProductPanel'
 import ShippedSalesByStatePanel from '@/components/ShippedSalesByStatePanel'
@@ -59,6 +60,7 @@ export default function Dashboard() {
   const [purchaseSub, setPurchaseSub] = useState<'openpo' | 'spending'>('openpo')
   const [wohTab, setWohTab] = useState<'sleeve' | 'display' | 'mylar' | 'tube' | 'cone' | 'label' | 'grinder' | 'lab' | 'marketing' | 'insert' | null>(null)
   const [dashSub, setDashSub] = useState<'woh' | 'reorder' | 'invops'>('woh')
+  const [salesCategory, setSalesCategory] = useState<'commit' | 'shipped'>('shipped')
   const [salesSub, setSalesSub] = useState<'shippedsales' | 'shippedsalesbyproduct' | 'shippedsalesbystate' | 'thccomparison'>('shippedsales')
   const [labelRows, setLabelRows] = useState<WohRow[]>([])
   const [labelLoading, setLabelLoading] = useState(false)
@@ -101,6 +103,9 @@ export default function Dashboard() {
   const [showSheets, setShowSheets] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [showCycleCount, setShowCycleCount] = useState(false)
+  const [syncAllRunning, setSyncAllRunning] = useState(false)
+  const [syncAllJobs, setSyncAllJobs] = useState<{name:string;status:string;error?:string}[]>([])
+  const [showSyncAll, setShowSyncAll] = useState(false)
 
   const fetchStats = useCallback(async () => {
     const res = await fetch('/api/stats')
@@ -124,6 +129,26 @@ export default function Dashboard() {
     await Promise.all([fetchStats(), fetchList()])
     if (!silent) setRefreshing(false)
   }, [fetchStats, fetchList])
+
+  const startSyncAll = useCallback(async () => {
+    if (syncAllRunning) return
+    setSyncAllRunning(true)
+    setShowSyncAll(true)
+    setSyncAllJobs([])
+    try {
+      await fetch('/api/sync-all', { method: 'POST' })
+      let done = false
+      while (!done) {
+        await new Promise(r => setTimeout(r, 1500))
+        const s = await fetch('/api/sync-all').then(r => r.json())
+        setSyncAllJobs(s.jobs || [])
+        if (!s.running) { done = true }
+      }
+      window.dispatchEvent(new Event('finale-synced'))
+      await refresh(true)
+    } catch { /* ignore */ }
+    setSyncAllRunning(false)
+  }, [syncAllRunning, refresh])
 
   useEffect(() => { fetchStats().then(() => setLoading(false)); fetchList() }, [fetchStats, fetchList])
   useEffect(() => { const id = setInterval(() => refresh(true), REFRESH_INTERVAL); return () => clearInterval(id) }, [refresh])
@@ -233,6 +258,32 @@ export default function Dashboard() {
           <button onClick={() => setShowNew(true)} className="btn-primary text-sm">
             <Plus className="w-4 h-4" /> Log Issue
           </button>
+          <div className="relative">
+            <button onClick={startSyncAll} disabled={syncAllRunning} className="btn text-sm bg-orange-600/20 text-orange-400 border border-orange-600/30 hover:bg-orange-600/30 gap-1.5" title="Sync all data from Finale">
+              <RefreshCw className={cn('w-4 h-4', syncAllRunning && 'animate-spin')} />
+              {syncAllRunning ? 'Syncing…' : 'Sync All'}
+            </button>
+            {showSyncAll && syncAllJobs.length > 0 && (
+              <div className="absolute right-0 top-full mt-2 w-72 bg-[#1a1510] border border-orange-900/40 rounded-xl shadow-2xl p-3 z-50">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-bold text-white/60 uppercase tracking-wider">Sync Progress</span>
+                  {!syncAllRunning && <button onClick={() => setShowSyncAll(false)} className="text-white/30 hover:text-white/60"><X className="w-3.5 h-3.5" /></button>}
+                </div>
+                <div className="space-y-1.5">
+                  {syncAllJobs.map((j, i) => (
+                    <div key={i} className="flex items-center gap-2 text-xs">
+                      {j.status === 'done' ? <CheckCircle2 className="w-3.5 h-3.5 text-green-500 shrink-0" /> :
+                       j.status === 'error' ? <AlertTriangle className="w-3.5 h-3.5 text-red-500 shrink-0" /> :
+                       j.status === 'running' ? <RefreshCw className="w-3.5 h-3.5 text-orange-400 animate-spin shrink-0" /> :
+                       <Clock className="w-3.5 h-3.5 text-white/20 shrink-0" />}
+                      <span className={j.status === 'done' ? 'text-white/60' : j.status === 'running' ? 'text-orange-400' : j.status === 'error' ? 'text-red-400' : 'text-white/30'}>{j.name}</span>
+                      {j.error && <span className="text-red-400/60 truncate ml-auto max-w-[120px]" title={j.error}>failed</span>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
           <button onClick={() => refresh()} disabled={refreshing} className="btn-ghost w-10 h-10 p-0 justify-center rounded-lg" title="Refresh">
             <RefreshCw className={cn('w-5 h-5', refreshing && 'animate-spin')} />
           </button>
@@ -285,45 +336,71 @@ export default function Dashboard() {
         </div>
       ) : activeTab === 'sales' ? (
         <div className="flex-1 flex flex-col overflow-hidden">
-          {/* Sales sub-tabs */}
+          {/* Sales category tabs: Commit Sale | Shipped Sale */}
           <div className="flex items-center gap-2 px-6 py-3 border-b border-orange-900/30 bg-black shrink-0">
             <button
-              onClick={() => setSalesSub('shippedsales')}
+              onClick={() => setSalesCategory('commit')}
               className={cn('flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-bold uppercase tracking-wide transition-colors',
-                salesSub === 'shippedsales' ? 'bg-orange-500/15 text-orange-400 ring-1 ring-orange-500/30' : 'text-white/50 hover:bg-white/5 hover:text-white'
+                salesCategory === 'commit' ? 'bg-orange-500/15 text-orange-400 ring-1 ring-orange-500/30' : 'text-white/50 hover:bg-white/5 hover:text-white'
               )}
             >
-              <TrendingUp className="w-4 h-4" />Shipped Sales
+              <TrendingUp className="w-4 h-4" />Commit Sale
             </button>
             <button
-              onClick={() => setSalesSub('shippedsalesbyproduct')}
+              onClick={() => setSalesCategory('shipped')}
               className={cn('flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-bold uppercase tracking-wide transition-colors',
-                salesSub === 'shippedsalesbyproduct' ? 'bg-orange-500/15 text-orange-400 ring-1 ring-orange-500/30' : 'text-white/50 hover:bg-white/5 hover:text-white'
+                salesCategory === 'shipped' ? 'bg-orange-500/15 text-orange-400 ring-1 ring-orange-500/30' : 'text-white/50 hover:bg-white/5 hover:text-white'
               )}
             >
-              <Package className="w-4 h-4" />Shipped Sales by Product
-            </button>
-            <button
-              onClick={() => setSalesSub('shippedsalesbystate')}
-              className={cn('flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-bold uppercase tracking-wide transition-colors',
-                salesSub === 'shippedsalesbystate' ? 'bg-orange-500/15 text-orange-400 ring-1 ring-orange-500/30' : 'text-white/50 hover:bg-white/5 hover:text-white'
-              )}
-            >
-              <MapPin className="w-4 h-4" />Shipped Sales by State
-            </button>
-            <button
-              onClick={() => setSalesSub('thccomparison')}
-              className={cn('flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-bold uppercase tracking-wide transition-colors',
-                salesSub === 'thccomparison' ? 'bg-orange-500/15 text-orange-400 ring-1 ring-orange-500/30' : 'text-white/50 hover:bg-white/5 hover:text-white'
-              )}
-            >
-              <TrendingUp className="w-4 h-4" />THCA vs THCP
+              <TrendingUp className="w-4 h-4" />Shipped Sale
             </button>
           </div>
-          {salesSub === 'shippedsales' && <ShippedSalesPanel />}
-          {salesSub === 'shippedsalesbyproduct' && <ShippedSalesByProductPanel />}
-          {salesSub === 'shippedsalesbystate' && <ShippedSalesByStatePanel />}
-          {salesSub === 'thccomparison' && <THCComparisonPanel />}
+
+          {salesCategory === 'commit' && <CommitSalePanel />}
+
+          {salesCategory === 'shipped' && (
+            <>
+              {/* Shipped Sale sub-tabs */}
+              <div className="flex items-center gap-2 px-6 py-2 border-b border-orange-900/20 bg-[#0d0a07] shrink-0">
+                <button
+                  onClick={() => setSalesSub('shippedsales')}
+                  className={cn('flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wide transition-colors',
+                    salesSub === 'shippedsales' ? 'bg-orange-500/15 text-orange-400 ring-1 ring-orange-500/30' : 'text-white/40 hover:bg-white/5 hover:text-white'
+                  )}
+                >
+                  <TrendingUp className="w-3.5 h-3.5" />Shipped Sales
+                </button>
+                <button
+                  onClick={() => setSalesSub('shippedsalesbyproduct')}
+                  className={cn('flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wide transition-colors',
+                    salesSub === 'shippedsalesbyproduct' ? 'bg-orange-500/15 text-orange-400 ring-1 ring-orange-500/30' : 'text-white/40 hover:bg-white/5 hover:text-white'
+                  )}
+                >
+                  <Package className="w-3.5 h-3.5" />Shipped Sales by Product
+                </button>
+                <button
+                  onClick={() => setSalesSub('shippedsalesbystate')}
+                  className={cn('flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wide transition-colors',
+                    salesSub === 'shippedsalesbystate' ? 'bg-orange-500/15 text-orange-400 ring-1 ring-orange-500/30' : 'text-white/40 hover:bg-white/5 hover:text-white'
+                  )}
+                >
+                  <MapPin className="w-3.5 h-3.5" />Shipped Sales by State
+                </button>
+                <button
+                  onClick={() => setSalesSub('thccomparison')}
+                  className={cn('flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wide transition-colors',
+                    salesSub === 'thccomparison' ? 'bg-orange-500/15 text-orange-400 ring-1 ring-orange-500/30' : 'text-white/40 hover:bg-white/5 hover:text-white'
+                  )}
+                >
+                  <TrendingUp className="w-3.5 h-3.5" />THCA vs THCP
+                </button>
+              </div>
+              {salesSub === 'shippedsales' && <ShippedSalesPanel />}
+              {salesSub === 'shippedsalesbyproduct' && <ShippedSalesByProductPanel />}
+              {salesSub === 'shippedsalesbystate' && <ShippedSalesByStatePanel />}
+              {salesSub === 'thccomparison' && <THCComparisonPanel />}
+            </>
+          )}
         </div>
       ) : activeTab === 'ecomrestock' ? (
         <EcomRestockPanel />
